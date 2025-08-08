@@ -20,6 +20,6 @@ jobs:
       - name: Build nix package
         run: nix build
       - name: Run nix flake check
-        run: nix flake check --all-system
+        run: nix flake check --all-systems
       - name: Run integration tests
         run: nix develop --command cargo test -- --show-output

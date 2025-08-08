@@ -75,6 +75,7 @@
               pname = name;
               inherit version;
               meta = {
+                description = "MCP server for Neovim";
                 mainProgram = name;
               };
               src = ./.;
@@ -87,7 +88,9 @@
         apps = {
           default = {
             type = "app";
-            meta = {};
+            meta = {
+              description = "MCP server for Neovim";
+            };
             program = lib.getExe self.packages.${system}.nvim-mcp;
           };
         };
