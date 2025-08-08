@@ -87,6 +87,7 @@
         apps = {
           default = {
             type = "app";
+            meta = {};
             program = lib.getExe self.packages.${system}.nvim-mcp;
           };
         };
