@@ -20,9 +20,10 @@ jobs:
       - build-binary
     runs-on: ubuntu-latest
     steps:
-      - name: Setup | Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
         with:
-          fetch-depth: 0
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish crates.io
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          nix develop --command cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
