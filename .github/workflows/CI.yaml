@@ -15,7 +15,7 @@ jobs:
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
-      - name: Run integration tests
+      - name: Run pre-commit hooks on all files
         run: nix develop --command pre-commit run --all-files
       - name: Build nix package
         run: nix build
