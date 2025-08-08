@@ -1,0 +1,28 @@
+name: "CD"
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-binary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build binary
+        run: nix build
+
+  publish:
+    needs:
+      - build-binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish crates.io
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
