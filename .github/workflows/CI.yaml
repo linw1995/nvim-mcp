@@ -18,7 +18,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 1G
+          gc-max-store-size-linux: 20G
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pre-commit
