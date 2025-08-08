@@ -21,17 +21,23 @@ connections and access diagnostic information via structured resources.
 
 ## Installation
 
-### From Source
+### Use Cargo install from crates.io
 
 ```bash
-git clone https://github.com/linw1995/nvim-mcp.git && cd nvim-mcp
-cargo install --path .
+cargo install nvim-mcp
 ```
 
 ### Using Nix
 
 ```bash
 nix profile install github:linw1995/nvim-mcp#nvim-mcp
+```
+
+### From Source
+
+```bash
+git clone https://github.com/linw1995/nvim-mcp.git && cd nvim-mcp
+cargo install --path .
 ```
 
 ## Quick Start
