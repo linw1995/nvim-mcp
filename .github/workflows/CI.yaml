@@ -11,15 +11,46 @@ jobs:
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            keep-env-derivations = true
+            keep-outputs = true
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@v6
+        with:
+          # restore and save a cache using this key
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          # if there's no cache hit, restore a cache by this prefix
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          # collect garbage until the Nix store size (in bytes) is at most this number
+          # before trying to save a new cache
+          # 1G = 1073741824
+          gc-max-store-size-linux: 1G
+          # do purge caches
+          purge: true
+          # purge all versions of the cache
+          purge-prefixes: nix-${{ runner.os }}-
+          # created more than this number of seconds ago
+          purge-created: 0
+          # or, last accessed more than this number of seconds ago
+          # relative to the start of the `Post Restore and save Nix store` phase
+          purge-last-accessed: 0
+          # except any version with the key that is the same as the `primary-key`
+          purge-primary-key: never
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
+
       - name: Run pre-commit hooks on all files
         run: nix develop --command pre-commit run --all-files
+
       - name: Build nix package
         run: nix build
+
       - name: Run nix flake check
         run: nix flake check --all-systems
+
       - name: Run integration tests
         run: nix develop --command cargo test -- --show-output
