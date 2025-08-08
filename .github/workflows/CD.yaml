@@ -9,9 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
+      - uses: nixbuild/nix-quick-install-action@v30
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          nix_conf: |
+            keep-env-derivations = true
+            keep-outputs = true
       - name: Build binary
         run: nix build
 
@@ -21,9 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
+      - uses: nixbuild/nix-quick-install-action@v30
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          nix_conf: |
+            keep-env-derivations = true
+            keep-outputs = true
       - name: Publish crates.io
         run: |
           nix develop --command cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
