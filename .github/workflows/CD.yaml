@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: nixbuild/nix-quick-install-action@v30
         with:
           nix_conf: |
@@ -20,6 +21,12 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
           gc-max-store-size-linux: 20G
+
+      - uses: HatsuneMiku3939/direnv-action@v1
+      - name: Setup nix develop env and avoid gc
+        run: |
+          echo 'use flake' >.envrc
+
       - name: Build binary
         run: nix build
 
@@ -29,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: nixbuild/nix-quick-install-action@v30
         with:
           nix_conf: |
@@ -40,6 +48,12 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
           gc-max-store-size-linux: 20G
+
+      - uses: HatsuneMiku3939/direnv-action@v1
+      - name: Setup nix develop env and avoid gc
+        run: |
+          echo 'use flake' >.envrc
+
       - name: Publish crates.io
         run: |
-          nix develop --command cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+          cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}

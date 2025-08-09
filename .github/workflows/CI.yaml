@@ -24,8 +24,13 @@ jobs:
           path: ~/.cache/pre-commit
           key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
 
+      - uses: HatsuneMiku3939/direnv-action@v1
+      - name: Setup nix develop env and avoid gc
+        run: |
+          echo 'use flake' >.envrc
+
       - name: Run pre-commit hooks on all files
-        run: nix develop --command pre-commit run --all-files
+        run: pre-commit run --all-files
 
       - name: Build nix package
         run: nix build
@@ -34,4 +39,4 @@ jobs:
         run: nix flake check --all-systems
 
       - name: Run integration tests
-        run: nix develop --command cargo test -- --show-output
+        run: cargo test -- --show-output
