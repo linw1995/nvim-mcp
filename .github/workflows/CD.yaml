@@ -29,7 +29,8 @@ jobs:
       # and avoid develop env being gc
 
       - name: Build binary
-        run: nix build
+        run: nix build --profile default
+      # use --profile default to avoid dependencies being gc
 
   publish:
     needs:

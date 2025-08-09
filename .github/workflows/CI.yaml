@@ -36,7 +36,8 @@ jobs:
         run: pre-commit run --all-files
 
       - name: Build nix package
-        run: nix build
+        run: nix build --profile default
+        # use --profile default to avoid dependencies being gc
 
       - name: Run nix flake check
         run: nix flake check --all-systems
