@@ -50,6 +50,20 @@ pub trait NeovimClientTrait: Sync {
         buffer_id: u64,
         position: Position,
     ) -> Result<HoverResult, NeovimError>;
+
+    /// Get document symbols for a specific buffer
+    async fn lsp_document_symbols(
+        &self,
+        client_name: &str,
+        buffer_id: u64,
+    ) -> Result<DocumentSymbolResult, NeovimError>;
+
+    /// Search for workspace symbols by query
+    async fn lsp_workspace_symbols(
+        &self,
+        client_name: &str,
+        query: &str,
+    ) -> Result<Vec<SymbolInformation>, NeovimError>;
 }
 
 pub struct NeovimHandler<T> {
@@ -507,6 +521,206 @@ pub struct CodeActionResult {
     pub result: Vec<CodeAction>,
 }
 
+/// A symbol kind.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(into = "u8", from = "u8")]
+pub enum SymbolKind {
+    File = 1,
+    Module = 2,
+    Namespace = 3,
+    Package = 4,
+    Class = 5,
+    Method = 6,
+    Property = 7,
+    Field = 8,
+    Constructor = 9,
+    Enum = 10,
+    Interface = 11,
+    Function = 12,
+    Variable = 13,
+    Constant = 14,
+    String = 15,
+    Number = 16,
+    Boolean = 17,
+    Array = 18,
+    Object = 19,
+    Key = 20,
+    Null = 21,
+    EnumMember = 22,
+    Struct = 23,
+    Event = 24,
+    Operator = 25,
+    TypeParameter = 26,
+}
+
+impl From<SymbolKind> for u8 {
+    fn from(kind: SymbolKind) -> u8 {
+        kind as u8
+    }
+}
+
+impl From<u8> for SymbolKind {
+    fn from(value: u8) -> SymbolKind {
+        match value {
+            1 => SymbolKind::File,
+            2 => SymbolKind::Module,
+            3 => SymbolKind::Namespace,
+            4 => SymbolKind::Package,
+            5 => SymbolKind::Class,
+            6 => SymbolKind::Method,
+            7 => SymbolKind::Property,
+            8 => SymbolKind::Field,
+            9 => SymbolKind::Constructor,
+            10 => SymbolKind::Enum,
+            11 => SymbolKind::Interface,
+            12 => SymbolKind::Function,
+            13 => SymbolKind::Variable,
+            14 => SymbolKind::Constant,
+            15 => SymbolKind::String,
+            16 => SymbolKind::Number,
+            17 => SymbolKind::Boolean,
+            18 => SymbolKind::Array,
+            19 => SymbolKind::Object,
+            20 => SymbolKind::Key,
+            21 => SymbolKind::Null,
+            22 => SymbolKind::EnumMember,
+            23 => SymbolKind::Struct,
+            24 => SymbolKind::Event,
+            25 => SymbolKind::Operator,
+            26 => SymbolKind::TypeParameter,
+            _ => SymbolKind::Variable, // Default fallback
+        }
+    }
+}
+
+/// Symbol tags are extra annotations that tweak the rendering of a symbol.
+///
+/// @since 3.16
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(into = "u8", from = "u8")]
+pub enum SymbolTag {
+    /// Render a symbol as obsolete, usually using a strike-out.
+    Deprecated = 1,
+}
+
+impl From<SymbolTag> for u8 {
+    fn from(tag: SymbolTag) -> u8 {
+        tag as u8
+    }
+}
+
+impl From<u8> for SymbolTag {
+    fn from(value: u8) -> SymbolTag {
+        match value {
+            1 => SymbolTag::Deprecated,
+            _ => SymbolTag::Deprecated, // Default fallback
+        }
+    }
+}
+
+/// Represents a location inside a resource, such as a line inside a text file.
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct Location {
+    pub uri: String,
+    pub range: Range,
+}
+
+/// Represents information about programming constructs like variables, classes, interfaces etc.
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolInformation {
+    /// The name of this symbol.
+    pub name: String,
+    /// The kind of this symbol.
+    pub kind: SymbolKind,
+    /// Tags for this symbol.
+    ///
+    /// @since 3.16.0
+    pub tags: Option<Vec<SymbolTag>>,
+    /// Indicates if this symbol is deprecated.
+    ///
+    /// @deprecated Use tags instead
+    pub deprecated: Option<bool>,
+    /// The location of this symbol. The location's range is used by a tool
+    /// to reveal the location in the editor. If the symbol is selected in the
+    /// tool the range's start information is used to position the cursor. So
+    /// the range usually spans more than the actual symbol's name and does
+    /// normally include things like visibility modifiers.
+    ///
+    /// The range doesn't have to denote a node range in the sense of an abstract
+    /// syntax tree. It can therefore not be used to re-construct a hierarchy of
+    /// the symbols.
+    pub location: Location,
+    /// The name of the symbol containing this symbol. This information is for
+    /// user interface purposes (e.g. to render a qualifier in the user interface
+    /// if necessary). It can't be used to re-infer a hierarchy for the document
+    /// symbols.
+    pub container_name: Option<String>,
+}
+
+/// Represents programming constructs like variables, classes, interfaces etc. that appear in a document.
+/// Document symbols can be hierarchical and they have two ranges: one that encloses its definition and
+/// one that points to its most interesting range, e.g. the range of an identifier.
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSymbol {
+    /// The name of this symbol. Will be displayed in the user interface and therefore must not be
+    /// an empty string or a string only consisting of white spaces.
+    pub name: String,
+    /// More detail for this symbol, e.g the signature of a function.
+    pub detail: Option<String>,
+    /// The kind of this symbol.
+    pub kind: SymbolKind,
+    /// Tags for this symbol.
+    ///
+    /// @since 3.16.0
+    pub tags: Option<Vec<SymbolTag>>,
+    /// Indicates if this symbol is deprecated.
+    ///
+    /// @deprecated Use tags instead
+    pub deprecated: Option<bool>,
+    /// The range enclosing this symbol not including leading/trailing whitespace but everything else
+    /// like comments. This information is typically used to determine if the clients cursor is
+    /// inside the symbol to reveal in the symbol in the UI.
+    pub range: Range,
+    /// The range that should be selected and revealed when this symbol is being picked, e.g the name of a function.
+    /// Must be contained by the `range`.
+    pub selection_range: Range,
+    /// Children of this symbol, e.g. properties of a class.
+    pub children: Option<Vec<DocumentSymbol>>,
+}
+
+/// Parameters for document symbol request
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSymbolParams {
+    /// The text document.
+    pub text_document: TextDocumentIdentifier,
+}
+
+/// Parameters for workspace symbol request
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct WorkspaceSymbolParams {
+    /// A query string to filter symbols by. Clients may send an empty
+    /// string here to request all symbols.
+    pub query: String,
+}
+
+/// Result type for document symbols request
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum DocumentSymbolResult {
+    Symbols(Vec<DocumentSymbol>),
+    Information(Vec<SymbolInformation>),
+}
+
+/// Result type for workspace symbols request
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct WorkspaceSymbolResult {
+    pub err_msg: Option<String>,
+    pub result: Option<Vec<SymbolInformation>>,
+}
+
 pub struct NeovimClient<T>
 where
     T: AsyncWrite + Send + 'static,
@@ -956,5 +1170,191 @@ where
                 Err(NeovimError::Api(format!("Failed to get LSP clients: {e}")))
             }
         }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_document_symbols(
+        &self,
+        client_name: &str,
+        buffer_id: u64,
+    ) -> Result<DocumentSymbolResult, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_document_symbols.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&DocumentSymbolParams {
+                            text_document: self
+                                .lsp_make_text_document_params(buffer_id)
+                                .await
+                                .map_err(|e| {
+                                    NeovimError::Api(format!(
+                                        "Failed to make text document params: {e}"
+                                    ))
+                                })?,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                    Value::from(buffer_id),   // bufnr
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP Document symbols retrieved successfully");
+                #[derive(Debug, serde::Deserialize)]
+                struct Result {
+                    result: DocumentSymbolResult,
+                }
+                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        debug!("Failed to parse document symbols result: {}", e);
+                        return Err(NeovimError::Api(format!(
+                            "Failed to parse document symbols result: {e}"
+                        )));
+                    }
+                };
+                Ok(result.result)
+            }
+            Err(e) => {
+                debug!("Failed to get document symbols: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get document symbols: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_workspace_symbols(
+        &self,
+        client_name: &str,
+        query: &str,
+    ) -> Result<Vec<SymbolInformation>, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_workspace_symbols.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&WorkspaceSymbolParams {
+                            query: query.to_string(),
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP Workspace symbols retrieved successfully");
+                let result: WorkspaceSymbolResult =
+                    match serde_json::from_str(result.as_str().unwrap()) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            debug!("Failed to parse workspace symbols result: {}", e);
+                            return Err(NeovimError::Api(format!(
+                                "Failed to parse workspace symbols result: {e}"
+                            )));
+                        }
+                    };
+                match result.result {
+                    Some(symbols) => Ok(symbols),
+                    None => match result.err_msg {
+                        Some(err) => Err(NeovimError::Api(err)),
+                        None => Ok(vec![]),
+                    },
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get workspace symbols: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get workspace symbols: {e}"
+                )))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_symbol_kind_serialization() {
+        assert_eq!(serde_json::to_value(SymbolKind::Function).unwrap(), 12);
+        assert_eq!(serde_json::to_value(SymbolKind::Variable).unwrap(), 13);
+        assert_eq!(serde_json::to_value(SymbolKind::Class).unwrap(), 5);
+    }
+
+    #[test]
+    fn test_symbol_information_serialization() {
+        let symbol = SymbolInformation {
+            name: "test_function".to_string(),
+            kind: SymbolKind::Function,
+            tags: None,
+            deprecated: None,
+            location: Location {
+                uri: "file:///test.rs".to_string(),
+                range: Range {
+                    start: Position { line: 0, character: 0 },
+                    end: Position { line: 0, character: 13 },
+                },
+            },
+            container_name: None,
+        };
+
+        let json = serde_json::to_string(&symbol).unwrap();
+        assert!(json.contains("test_function"));
+        assert!(json.contains("file:///test.rs"));
+    }
+
+    #[test]
+    fn test_document_symbol_serialization() {
+        let symbol = DocumentSymbol {
+            name: "TestClass".to_string(),
+            detail: Some("class TestClass".to_string()),
+            kind: SymbolKind::Class,
+            tags: None,
+            deprecated: None,
+            range: Range {
+                start: Position { line: 0, character: 0 },
+                end: Position { line: 10, character: 0 },
+            },
+            selection_range: Range {
+                start: Position { line: 0, character: 6 },
+                end: Position { line: 0, character: 15 },
+            },
+            children: None,
+        };
+
+        let json = serde_json::to_string(&symbol).unwrap();
+        assert!(json.contains("TestClass"));
+        assert!(json.contains("class TestClass"));
+    }
+
+    #[test]
+    fn test_workspace_symbol_params_serialization() {
+        let params = WorkspaceSymbolParams {
+            query: "function".to_string(),
+        };
+
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("function"));
     }
 }
