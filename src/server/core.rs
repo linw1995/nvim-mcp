@@ -45,11 +45,11 @@ impl NeovimMcpServer {
 
             if let Some(existing_client) = self.nvim_clients.get(candidate) {
                 // Check if the existing connection has the same target
-                if let Some(existing_target) = existing_client.target() {
-                    if existing_target == target {
-                        // Same target, return existing connection ID (connection replacement)
-                        return candidate.to_string();
-                    }
+                if let Some(existing_target) = existing_client.target()
+                    && existing_target == target
+                {
+                    // Same target, return existing connection ID (connection replacement)
+                    return candidate.to_string();
                 }
                 // Different target, continue looking for another ID
                 continue;
@@ -65,9 +65,9 @@ impl NeovimMcpServer {
 
     /// Get connection by ID with proper error handling
     pub fn get_connection(
-        &self,
+        &'_ self,
         connection_id: &str,
-    ) -> Result<dashmap::mapref::one::Ref<String, Box<dyn NeovimClientTrait + Send>>, McpError>
+    ) -> Result<dashmap::mapref::one::Ref<'_, String, Box<dyn NeovimClientTrait + Send>>, McpError>
     {
         self.nvim_clients.get(connection_id).ok_or_else(|| {
             McpError::invalid_request(
