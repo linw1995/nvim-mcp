@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: nixbuild/nix-quick-install-action@v30
         with:
           nix_conf: |
@@ -19,15 +20,17 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
           gc-max-store-size-linux: 20G
+
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-3|${{ hashFiles('.pre-commit-config.yaml') }}
 
-      - uses: HatsuneMiku3939/direnv-action@v1
-      - name: Setup nix develop env and avoid gc
+      - name: Setup nix develop env
         run: |
           echo 'use flake' >.envrc
+      - uses: HatsuneMiku3939/direnv-action@v1
+      # and avoid develop env being gc
 
       - name: Run pre-commit hooks on all files
         run: pre-commit run --all-files

@@ -22,10 +22,11 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-
           gc-max-store-size-linux: 20G
 
-      - uses: HatsuneMiku3939/direnv-action@v1
-      - name: Setup nix develop env and avoid gc
+      - name: Setup nix develop env
         run: |
           echo 'use flake' >.envrc
+      - uses: HatsuneMiku3939/direnv-action@v1
+      # and avoid develop env being gc
 
       - name: Build binary
         run: nix build
@@ -49,10 +50,11 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-
           gc-max-store-size-linux: 20G
 
-      - uses: HatsuneMiku3939/direnv-action@v1
-      - name: Setup nix develop env and avoid gc
+      - name: Setup nix develop env
         run: |
           echo 'use flake' >.envrc
+      - uses: HatsuneMiku3939/direnv-action@v1
+      # and avoid develop env being gc
 
       - name: Publish crates.io
         run: |
