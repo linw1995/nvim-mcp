@@ -320,7 +320,9 @@ impl NeovimMcpServer {
         }): Parameters<WorkspaceSymbolsParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let symbols = client.lsp_workspace_symbols(&lsp_client_name, &query).await?;
+        let symbols = client
+            .lsp_workspace_symbols(&lsp_client_name, &query)
+            .await?;
         Ok(CallToolResult::success(vec![Content::json(symbols)?]))
     }
 }

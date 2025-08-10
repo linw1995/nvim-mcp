@@ -1255,7 +1255,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000), // timeout_ms
+                    Value::from(1000),        // timeout_ms
                 ],
             )
             .await
@@ -1312,8 +1312,14 @@ mod tests {
             location: Location {
                 uri: "file:///test.rs".to_string(),
                 range: Range {
-                    start: Position { line: 0, character: 0 },
-                    end: Position { line: 0, character: 13 },
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 13,
+                    },
                 },
             },
             container_name: None,
@@ -1333,12 +1339,24 @@ mod tests {
             tags: None,
             deprecated: None,
             range: Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 10, character: 0 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 10,
+                    character: 0,
+                },
             },
             selection_range: Range {
-                start: Position { line: 0, character: 6 },
-                end: Position { line: 0, character: 15 },
+                start: Position {
+                    line: 0,
+                    character: 6,
+                },
+                end: Position {
+                    line: 0,
+                    character: 15,
+                },
             },
             children: None,
         };

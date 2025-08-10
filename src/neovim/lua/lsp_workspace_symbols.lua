@@ -26,5 +26,5 @@ end
 
 -- Workspace symbols return SymbolInformation[], not DocumentSymbol[]
 return vim.json.encode({
-    result = result and result.result or nil
+    result = result and result.result or nil,
 })
