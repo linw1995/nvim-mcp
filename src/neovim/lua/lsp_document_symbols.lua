@@ -24,4 +24,7 @@ if err then
     })
 end
 
-return vim.json.encode(result)
+-- LSP response has a 'result' field containing DocumentSymbol[] | SymbolInformation[] | null
+return vim.json.encode({
+    result = result and result.result or nil,
+})

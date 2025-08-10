@@ -721,6 +721,13 @@ pub struct WorkspaceSymbolResult {
     pub result: Option<Vec<SymbolInformation>>,
 }
 
+/// Result type for document symbols request
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct DocumentSymbolResponse {
+    pub err_msg: Option<String>,
+    pub result: Option<DocumentSymbolResult>,
+}
+
 pub struct NeovimClient<T>
 where
     T: AsyncWrite + Send + 'static,
@@ -1209,20 +1216,23 @@ where
         {
             Ok(result) => {
                 debug!("LSP Document symbols retrieved successfully");
-                #[derive(Debug, serde::Deserialize)]
-                struct Result {
-                    result: DocumentSymbolResult,
+                let result: DocumentSymbolResponse =
+                    match serde_json::from_str(result.as_str().unwrap()) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            debug!("Failed to parse document symbols result: {}", e);
+                            return Err(NeovimError::Api(format!(
+                                "Failed to parse document symbols result: {e}"
+                            )));
+                        }
+                    };
+                match result.result {
+                    Some(symbols) => Ok(symbols),
+                    None => match result.err_msg {
+                        Some(err) => Err(NeovimError::Api(err)),
+                        None => Ok(DocumentSymbolResult::Information(vec![])),
+                    },
                 }
-                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        debug!("Failed to parse document symbols result: {}", e);
-                        return Err(NeovimError::Api(format!(
-                            "Failed to parse document symbols result: {e}"
-                        )));
-                    }
-                };
-                Ok(result.result)
             }
             Err(e) => {
                 debug!("Failed to get document symbols: {}", e);
