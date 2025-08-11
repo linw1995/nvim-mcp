@@ -56,5 +56,18 @@ The nvim-mcp project evolved through four major phases, each documented as a PRP
   - Deterministic connection IDs using BLAKE3 hashing
   - Connection-scoped resources and operations
   - Independent session isolation
-- **Status**: ✅ **Implemented** - Current production architecture
+- **Status**: ✅ **Implemented** - Multi-connection architecture in place
 - **Dependencies**: Requires all previous phases for comprehensive refactoring
+
+### Phase 5: Universal Document Identification (August 2025)
+
+- **[universal-text-document-identifier](./universal-text-document-identifier.md)**
+- **[STARTER](./universal-text-document-identifier.STARTER.md)** _(August 11, 2025)_
+- **Goal**: Universal text document identifier system for enhanced LSP operations
+- **Key Features**:
+  - Support for buffer IDs, project-relative paths, and absolute paths
+  - Enhanced LSP operations on files not open in Neovim buffers
+  - Backward compatibility with existing buffer-based methods
+  - Universal MCP tools with `DocumentIdentifier` support
+- **Status**: ✅ **Implemented** - Current production architecture
+- **Dependencies**: Requires Phase 4 (multi-connection architecture) for proper operation
