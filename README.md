@@ -158,22 +158,45 @@ establishment phase:
 - **`lsp_clients`**: Get workspace LSP clients
   - Parameters: `connection_id` (string) - Target Neovim connection
 
-- **`buffer_code_actions`**: Get available code actions for buffer range
-  - Parameters: `connection_id` (string), `id` (number), `lsp_client_name`
-    (string), `line` (number), `character` (number), `end_line` (number),
-    `end_character` (number) (all positions are 0-indexed)
-
-- **`buffer_hover`**: Get symbol hover information via LSP
-  - Parameters: `connection_id` (string), `id` (number), `lsp_client_name`
-    (string), `line` (number), `character` (number) (all positions are 0-indexed)
-
-- **`document_symbols`**: Get document symbols for a buffer
-  - Parameters: `connection_id` (string), `id` (number), `lsp_client_name`
-    (string) - Buffer ID and LSP client name
-
-- **`workspace_symbols`**: Search workspace symbols by query
+- **`lsp_workspace_symbols`**: Search workspace symbols by query
   - Parameters: `connection_id` (string), `lsp_client_name` (string), `query`
     (string) - Search query for filtering symbols
+
+- **`lsp_code_actions`**: Get LSP code actions with universal document identification
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `start_line` (number), `start_character` (number),
+    `end_line` (number), `end_character` (number) (all positions are 0-indexed)
+
+- **`lsp_hover`**: Get LSP hover information with universal document identification
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `line` (number), `character` (number)
+    (all positions are 0-indexed)
+
+- **`lsp_document_symbols`**: Get document symbols with universal document identification
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string)
+
+- **`lsp_references`**: Get LSP references with universal document identification
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `line` (number), `character` (number),
+    `include_declaration` (boolean)
+
+### Universal Document Identifier
+
+The `document` parameter in the universal LSP tools accepts a `DocumentIdentifier`
+which can reference documents in three ways:
+
+**DocumentIdentifier Enum**:
+
+- **BufferId(u64)**: Reference by Neovim buffer ID (for currently open files)
+  - JSON format: `{"buffer_id": 123}`
+- **ProjectRelativePath(PathBuf)**: Reference by project-relative path
+  - JSON format: `{"project_relative_path": "src/main.rs"}`
+- **AbsolutePath(PathBuf)**: Reference by absolute file path
+  - JSON format: `{"absolute_path": "/home/user/project/src/main.rs"}`
+
+This system enables LSP operations on files that may not be open in Neovim buffers,
+providing enhanced flexibility for code analysis and navigation.
 
 #### Code Execution
 

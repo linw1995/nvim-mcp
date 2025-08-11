@@ -61,38 +61,7 @@ All tools below require a `connection_id` parameter from connection establishmen
   - **Returns**: Array of active LSP client objects
   - **Usage**: Check available language servers before requesting code actions
 
-- **`buffer_code_actions`**: Get LSP code actions for buffer range
-  - **Parameters**:
-    - `connection_id` (string): Target Neovim instance ID
-    - `id` (number): Buffer ID
-    - `lsp_client_name` (string): LSP client name from lsp_clients
-    - `line` (number): Start line (0-indexed)
-    - `character` (number): Start character (0-indexed)
-    - `end_line` (number): End line (0-indexed)
-    - `end_character` (number): End character (0-indexed)
-  - **Returns**: Array of available code action objects
-  - **Usage**: Get refactoring options, quick fixes, and code suggestions
-
-- **`buffer_hover`**: Get symbol hover information via LSP
-  - **Parameters**:
-    - `connection_id` (string): Target Neovim instance ID
-    - `id` (number): Buffer ID from list_buffers
-    - `lsp_client_name` (string): LSP client name from lsp_clients
-    - `line` (number): Symbol position line (0-indexed)
-    - `character` (number): Symbol position character (0-indexed)
-  - **Returns**: Object with hover information including documentation and type details
-  - **Usage**: Get detailed information about symbols, functions, variables at
-    cursor position
-
-- **`document_symbols`**: Get document symbols for specific buffer
-  - **Parameters**:
-    - `connection_id` (string): Target Neovim instance ID
-    - `id` (number): Buffer ID from list_buffers
-    - `lsp_client_name` (string): LSP client name from lsp_clients
-  - **Returns**: Array of document symbol objects with names, kinds, and ranges
-  - **Usage**: Navigate and understand code structure within a specific file
-
-- **`workspace_symbols`**: Search workspace symbols by query
+- **`lsp_workspace_symbols`**: Search workspace symbols by query
   - **Parameters**:
     - `connection_id` (string): Target Neovim instance ID
     - `lsp_client_name` (string): LSP client name from lsp_clients
@@ -100,7 +69,77 @@ All tools below require a `connection_id` parameter from connection establishmen
   - **Returns**: Array of workspace symbol objects with names, locations, and kinds
   - **Usage**: Find symbols across the entire workspace for navigation and code exploration
 
+- **`lsp_code_actions`**: Get LSP code actions with universal document identification
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `start_line` (number): Start line (0-indexed)
+    - `start_character` (number): Start character (0-indexed)
+    - `end_line` (number): End line (0-indexed)
+    - `end_character` (number): End character (0-indexed)
+  - **Returns**: Array of available code action objects
+  - **Usage**: Get refactoring options, quick fixes, and code suggestions
+    for any document
+
+- **`lsp_hover`**: Get LSP hover information with universal document identification
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `line` (number): Symbol position line (0-indexed)
+    - `character` (number): Symbol position character (0-indexed)
+  - **Returns**: Object with hover information including documentation and type details
+  - **Usage**: Get detailed information about symbols, functions, variables
+    at cursor position in any document
+
+- **`lsp_document_symbols`**: Get document symbols with universal document identification
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+  - **Returns**: Array of document symbol objects with names, kinds, and ranges
+  - **Usage**: Navigate and understand code structure within any document
+
+- **`lsp_references`**: Get LSP references with universal document identification
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `line` (number): Symbol position line (0-indexed)
+    - `character` (number): Symbol position character (0-indexed)
+    - `include_declaration` (boolean): Include the declaration of the
+      current symbol in the results
+  - **Returns**: Array of reference objects with locations
+  - **Usage**: Find all references to a symbol across the workspace in any document
+
 ### Resources
+
+### Universal Document Identifier System
+
+The server includes a universal document identifier system that enhances LSP operations
+by supporting multiple ways of referencing documents:
+
+**DocumentIdentifier Enum**:
+
+- **BufferId(u64)**: Reference by Neovim buffer ID (for currently open files)
+  - JSON format: `{"buffer_id": 123}`
+- **ProjectRelativePath(PathBuf)**: Reference by project-relative path
+  - JSON format: `{"project_relative_path": "src/main.rs"}`
+- **AbsolutePath(PathBuf)**: Reference by absolute file path
+  - JSON format: `{"absolute_path": "/home/user/project/src/main.rs"}`
+
+This system enables LSP operations on files that may not be open in Neovim buffers,
+providing enhanced flexibility for code analysis and navigation. The universal LSP
+tools (`lsp_code_actions`, `lsp_hover`, `lsp_document_symbols`,
+`lsp_references`) accept
+any of these document identifier types.
+
+### MCP Resources
 
 The server provides connection-aware MCP resources via URI schemes:
 
@@ -171,7 +210,7 @@ Connection-scoped diagnostic resources using `nvim-diagnostics://` scheme:
 
 1. get_targets → connect → list_buffers (cache connection_id)
 2. lsp_clients (to find available language servers, reuse connection_id)
-3. buffer_code_actions (with specific range and LSP client, reuse connection_id)
+3. lsp_code_actions (with DocumentIdentifier and LSP client, reuse connection_id)
 4. exec_lua (to apply selected actions if needed, reuse connection_id)
 5. Keep connection active for additional operations
 
@@ -210,14 +249,14 @@ Connection-scoped diagnostic resources using `nvim-diagnostics://` scheme:
 
 #### Code Understanding
 
-1. Connect and list buffers (cache connection_id)
+1. Connect to Neovim instance (cache connection_id)
 2. Use exec_lua to get buffer content and metadata (reuse connection_id)
 3. Check LSP clients for language-specific information (reuse connection_id)
-4. Request code actions for interesting ranges (reuse connection_id)
-5. Use buffer_hover to get detailed symbol information at cursor positions
-   (reuse connection_id)
-6. Use document_symbols to understand file structure (reuse connection_id)
-7. Use workspace_symbols to find related code across project (reuse connection_id)
+4. Use lsp_code_actions with DocumentIdentifier for interesting ranges (reuse connection_id)
+5. Use lsp_hover with DocumentIdentifier for detailed symbol information (reuse connection_id)
+6. Use lsp_document_symbols with DocumentIdentifier to understand file
+   structure (reuse connection_id)
+7. Use lsp_workspace_symbols to find related code across project (reuse connection_id)
 8. Combine information for comprehensive analysis
 9. Maintain connection for iterative code exploration
 
@@ -225,8 +264,8 @@ Connection-scoped diagnostic resources using `nvim-diagnostics://` scheme:
 
 1. Connect to Neovim instance (cache connection_id)
 2. Get available LSP clients (reuse connection_id)
-3. Use workspace_symbols with search query to find symbols across project
-4. Use document_symbols to understand structure of specific files
+3. Use lsp_workspace_symbols with search query to find symbols across project
+4. Use lsp_document_symbols with DocumentIdentifier to understand structure of files
 5. Navigate to symbol locations using returned position information
 6. Keep connection active for continued navigation
 

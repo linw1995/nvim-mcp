@@ -219,16 +219,13 @@ pub struct TextDocumentIdentifier {
 
 /// Universal identifier for text documents supporting multiple reference types
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-#[serde(tag = "type", content = "value")]
+#[serde(rename_all = "snake_case")]
 pub enum DocumentIdentifier {
     /// Reference by Neovim buffer ID (for currently open files)
-    #[serde(rename = "buffer_id")]
     BufferId(u64),
     /// Reference by project-relative path
-    #[serde(rename = "project_path")]
     ProjectRelativePath(PathBuf),
     /// Reference by absolute file path
-    #[serde(rename = "absolute_path")]
     AbsolutePath(PathBuf),
 }
 
@@ -1785,7 +1782,7 @@ mod tests {
         // Test ProjectRelativePath serialization
         let rel_path = DocumentIdentifier::from_project_path("src/main.rs");
         let json = serde_json::to_string(&rel_path).unwrap();
-        assert!(json.contains("project_path"));
+        assert!(json.contains("project_relative_path"));
         assert!(json.contains("src/main.rs"));
 
         let deserialized: DocumentIdentifier = serde_json::from_str(&json).unwrap();
@@ -1810,7 +1807,7 @@ mod tests {
 
         // Verify the schema contains the expected enum variants
         assert!(schema_json.contains("buffer_id"));
-        assert!(schema_json.contains("project_path"));
+        assert!(schema_json.contains("project_relative_path"));
         assert!(schema_json.contains("absolute_path"));
     }
 }

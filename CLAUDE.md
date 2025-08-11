@@ -175,13 +175,35 @@ The server provides these tools (implemented with `#[tool]` attribute):
 2. **`exec_lua`**: Execute arbitrary Lua code in specific Neovim instance
 3. **`buffer_diagnostics`**: Get diagnostics for specific buffer on specific connection
 4. **`lsp_clients`**: Get workspace LSP clients for specific connection
-5. **`buffer_code_actions`**: Get LSP code actions for buffer range on specific connection
-6. **`buffer_hover`**: Get LSP hover information for symbols at cursor
-   position on specific connection
-7. **`document_symbols`**: Get document symbols for specific buffer on
-   specific connection
-8. **`workspace_symbols`**: Search workspace symbols by query on specific
+5. **`lsp_workspace_symbols`**: Search workspace symbols by query on specific
    connection
+6. **`lsp_code_actions`**: Get LSP code actions with universal document
+   identification (supports buffer IDs, project-relative paths, and absolute paths)
+7. **`lsp_hover`**: Get LSP hover information with universal document
+    identification (supports buffer IDs, project-relative paths, and absolute paths)
+8. **`lsp_document_symbols`**: Get document symbols with universal document
+    identification (supports buffer IDs, project-relative paths, and absolute paths)
+9. **`lsp_references`**: Get LSP references with universal document
+    identification (supports buffer IDs, project-relative paths, and absolute paths)
+
+### Universal Document Identifier System
+
+The server now includes a universal document identifier system that enhances
+LSP operations
+by supporting multiple ways of referencing documents:
+
+- **Buffer IDs**: For currently open files in Neovim (`BufferId(u64)`)
+  - JSON format: `{"buffer_id": 123}`
+- **Project-relative paths**: For files relative to the project root (`ProjectRelativePath(PathBuf)`)
+  - JSON format: `{"project_relative_path": "src/main.rs"}`
+- **Absolute file paths**: For files with absolute filesystem paths (`AbsolutePath(PathBuf)`)
+  - JSON format: `{"absolute_path": "/home/user/project/src/main.rs"}`
+
+This system enables LSP operations on files that may not be open in Neovim
+buffers, providing
+enhanced flexibility for code analysis and navigation. The universal LSP tools (`lsp_code_actions`,
+`lsp_hover`, `lsp_document_symbols`, `lsp_references`) accept any of these
+document identifier types.
 
 ### MCP Resources
 

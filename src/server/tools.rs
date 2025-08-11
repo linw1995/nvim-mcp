@@ -23,69 +23,25 @@ pub struct ConnectionRequest {
     pub connection_id: String,
 }
 
-/// Updated parameter struct for buffer operations with connection context
+/// Updated parameter struct for buffer operations
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct BufferConnectionRequest {
+pub struct BufferRequest {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Neovim Buffer ID
     pub id: u64,
 }
 
-/// Lua execution request with connection context
+/// Lua execution request
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct ExecuteLuaConnectionRequest {
+pub struct ExecuteLuaRequest {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Lua code to execute in Neovim
     pub code: String,
 }
 
-/// LSP parameters with connection context
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct BufferLSPConnectionParams {
-    /// Unique identifier for the target Neovim instance
-    pub connection_id: String,
-    /// Neovim Buffer ID
-    pub id: u64,
-    /// Lsp client name
-    pub lsp_client_name: String,
-    /// Cursor start position in the buffer, line number starts from 0
-    pub line: u64,
-    /// Cursor start position in the buffer, character number starts from 0
-    pub character: u64,
-    /// Cursor end position in the buffer, line number starts from 0
-    pub end_line: u64,
-    /// Cursor end position in the buffer, character number starts from 0
-    pub end_character: u64,
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct HoverParams {
-    /// Unique identifier for the target Neovim instance
-    pub connection_id: String,
-    /// Neovim Buffer ID
-    pub id: u64,
-    /// Lsp client name
-    pub lsp_client_name: String,
-    /// Symbol position in the buffer, line number starts from 0
-    pub line: u64,
-    /// Symbol position in the buffer, character number starts from 0
-    pub character: u64,
-}
-
-/// Document symbols parameters with connection context
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct DocumentSymbolsParams {
-    /// Unique identifier for the target Neovim instance
-    pub connection_id: String,
-    /// Neovim Buffer ID
-    pub id: u64,
-    /// Lsp client name
-    pub lsp_client_name: String,
-}
-
-/// Workspace symbols parameters with connection context
+/// Workspace symbols parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct WorkspaceSymbolsParams {
     /// Unique identifier for the target Neovim instance
@@ -96,26 +52,9 @@ pub struct WorkspaceSymbolsParams {
     pub query: String,
 }
 
-/// References parameters with connection context
+/// Code Actions parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct ReferencesParams {
-    /// Unique identifier for the target Neovim instance
-    pub connection_id: String,
-    /// Neovim Buffer ID
-    pub id: u64,
-    /// Lsp client name
-    pub lsp_client_name: String,
-    /// Symbol position in the buffer, line number starts from 0
-    pub line: u64,
-    /// Symbol position in the buffer, character number starts from 0
-    pub character: u64,
-    /// Include the declaration of the current symbol in the results
-    pub include_declaration: bool,
-}
-
-/// Universal parameter struct supporting multiple document identifier types
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct UniversalCodeActionsParams {
+pub struct CodeActionsParams {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
@@ -132,9 +71,9 @@ pub struct UniversalCodeActionsParams {
     pub end_character: u64,
 }
 
-/// Universal hover parameters with connection context
+/// Hover parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct UniversalHoverParams {
+pub struct HoverParam {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
@@ -147,9 +86,9 @@ pub struct UniversalHoverParams {
     pub character: u64,
 }
 
-/// Universal document symbols parameters with connection context
+/// Document symbols parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct UniversalDocumentSymbolsParams {
+pub struct DocumentSymbolsParams {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
@@ -158,9 +97,9 @@ pub struct UniversalDocumentSymbolsParams {
     pub lsp_client_name: String,
 }
 
-/// Universal references parameters with connection context
+/// References parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct UniversalReferencesParams {
+pub struct ReferencesParams {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
@@ -299,10 +238,10 @@ impl NeovimMcpServer {
     #[instrument(skip(self))]
     pub async fn exec_lua(
         &self,
-        Parameters(ExecuteLuaConnectionRequest {
+        Parameters(ExecuteLuaRequest {
             connection_id,
             code,
-        }): Parameters<ExecuteLuaConnectionRequest>,
+        }): Parameters<ExecuteLuaRequest>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let result = client.execute_lua(&code).await?;
@@ -317,9 +256,7 @@ impl NeovimMcpServer {
     #[instrument(skip(self))]
     pub async fn buffer_diagnostics(
         &self,
-        Parameters(BufferConnectionRequest { connection_id, id }): Parameters<
-            BufferConnectionRequest,
-        >,
+        Parameters(BufferRequest { connection_id, id }): Parameters<BufferRequest>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let diagnostics = client.get_buffer_diagnostics(id).await?;
@@ -337,70 +274,9 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(lsp_clients)?]))
     }
 
-    #[tool(description = "Get buffer's code actions")]
-    #[instrument(skip(self))]
-    pub async fn buffer_code_actions(
-        &self,
-        Parameters(BufferLSPConnectionParams {
-            connection_id,
-            id,
-            lsp_client_name,
-            line,
-            character,
-            end_line,
-            end_character,
-        }): Parameters<BufferLSPConnectionParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let client = self.get_connection(&connection_id)?;
-        let start = Position { line, character };
-        let end = Position {
-            line: end_line,
-            character: end_character,
-        };
-        let range = Range { start, end };
-
-        let code_actions = client
-            .lsp_get_code_actions(&lsp_client_name, id, range)
-            .await?;
-        Ok(CallToolResult::success(vec![Content::json(code_actions)?]))
-    }
-
-    #[tool(description = "Get Symbol's hover information")]
-    #[instrument(skip(self))]
-    pub async fn buffer_hover(
-        &self,
-        Parameters(HoverParams {
-            connection_id,
-            id,
-            lsp_client_name,
-            line,
-            character,
-        }): Parameters<HoverParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
-        let hover = client.lsp_hover(&lsp_client_name, id, position).await?;
-        Ok(CallToolResult::success(vec![Content::json(hover)?]))
-    }
-
-    #[tool(description = "Get document symbols for a buffer")]
-    #[instrument(skip(self))]
-    pub async fn document_symbols(
-        &self,
-        Parameters(DocumentSymbolsParams {
-            connection_id,
-            id,
-            lsp_client_name,
-        }): Parameters<DocumentSymbolsParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let client = self.get_connection(&connection_id)?;
-        let symbols = client.lsp_document_symbols(&lsp_client_name, id).await?;
-        Ok(CallToolResult::success(vec![Content::json(symbols)?]))
-    }
-
     #[tool(description = "Search workspace symbols by query")]
     #[instrument(skip(self))]
-    pub async fn workspace_symbols(
+    pub async fn lsp_workspace_symbols(
         &self,
         Parameters(WorkspaceSymbolsParams {
             connection_id,
@@ -415,32 +291,11 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(symbols)?]))
     }
 
-    #[tool(description = "Get references for a symbol at a specific position")]
+    #[tool(description = "Get LSP code actions")]
     #[instrument(skip(self))]
-    pub async fn lsp_references(
+    pub async fn lsp_code_actions(
         &self,
-        Parameters(ReferencesParams {
-            connection_id,
-            id,
-            lsp_client_name,
-            line,
-            character,
-            include_declaration,
-        }): Parameters<ReferencesParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
-        let references = client
-            .lsp_references(&lsp_client_name, id, position, include_declaration)
-            .await?;
-        Ok(CallToolResult::success(vec![Content::json(references)?]))
-    }
-
-    #[tool(description = "Get LSP code actions for any document using universal identifier")]
-    #[instrument(skip(self))]
-    pub async fn universal_code_actions(
-        &self,
-        Parameters(UniversalCodeActionsParams {
+        Parameters(CodeActionsParams {
             connection_id,
             document,
             lsp_client_name,
@@ -448,7 +303,7 @@ impl NeovimMcpServer {
             start_character,
             end_line,
             end_character,
-        }): Parameters<UniversalCodeActionsParams>,
+        }): Parameters<CodeActionsParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let start = Position {
@@ -467,17 +322,17 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(code_actions)?]))
     }
 
-    #[tool(description = "Get LSP hover information for any document using universal identifier")]
+    #[tool(description = "Get LSP hover information")]
     #[instrument(skip(self))]
-    pub async fn universal_hover(
+    pub async fn lsp_hover(
         &self,
-        Parameters(UniversalHoverParams {
+        Parameters(HoverParam {
             connection_id,
             document,
             lsp_client_name,
             line,
             character,
-        }): Parameters<UniversalHoverParams>,
+        }): Parameters<HoverParam>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let position = Position { line, character };
@@ -487,15 +342,15 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(hover)?]))
     }
 
-    #[tool(description = "Get document symbols for any document using universal identifier")]
+    #[tool(description = "Get document symbols")]
     #[instrument(skip(self))]
-    pub async fn universal_document_symbols(
+    pub async fn lsp_document_symbols(
         &self,
-        Parameters(UniversalDocumentSymbolsParams {
+        Parameters(DocumentSymbolsParams {
             connection_id,
             document,
             lsp_client_name,
-        }): Parameters<UniversalDocumentSymbolsParams>,
+        }): Parameters<DocumentSymbolsParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let symbols = client
@@ -504,18 +359,18 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(symbols)?]))
     }
 
-    #[tool(description = "Get LSP references for any document using universal identifier")]
+    #[tool(description = "Get LSP references")]
     #[instrument(skip(self))]
-    pub async fn universal_references(
+    pub async fn lsp_references(
         &self,
-        Parameters(UniversalReferencesParams {
+        Parameters(ReferencesParams {
             connection_id,
             document,
             lsp_client_name,
             line,
             character,
             include_declaration,
-        }): Parameters<UniversalReferencesParams>,
+        }): Parameters<ReferencesParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let position = Position { line, character };
