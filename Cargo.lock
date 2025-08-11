@@ -709,6 +709,7 @@ dependencies = [
  "regex",
  "rmcp",
  "rmpv",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror 2.0.12",

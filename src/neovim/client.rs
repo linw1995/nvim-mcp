@@ -1,7 +1,7 @@
 #![allow(rustdoc::invalid_codeblock_attributes)]
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use nvim_rs::{Handler, Neovim, create::tokio as create};
@@ -73,6 +73,38 @@ pub trait NeovimClientTrait: Sync {
         &self,
         client_name: &str,
         buffer_id: u64,
+        position: Position,
+        include_declaration: bool,
+    ) -> Result<Vec<Location>, NeovimError>;
+
+    /// Enhanced code actions method supporting universal document identification
+    async fn lsp_get_code_actions_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        range: Range,
+    ) -> Result<Vec<CodeAction>, NeovimError>;
+
+    /// Enhanced hover method supporting universal document identification
+    async fn lsp_hover_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<HoverResult, NeovimError>;
+
+    /// Enhanced document symbols method supporting universal document identification
+    async fn lsp_document_symbols_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+    ) -> Result<Option<DocumentSymbolResult>, NeovimError>;
+
+    /// Enhanced references method supporting universal document identification
+    async fn lsp_references_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
         position: Position,
         include_declaration: bool,
     ) -> Result<Vec<Location>, NeovimError>;
@@ -183,6 +215,38 @@ pub struct TextDocumentIdentifier {
     /// The version number of a document will increase after each change,
     /// including undo/redo. The number doesn't need to be consecutive.
     version: Option<i32>,
+}
+
+/// Universal identifier for text documents supporting multiple reference types
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", content = "value")]
+pub enum DocumentIdentifier {
+    /// Reference by Neovim buffer ID (for currently open files)
+    #[serde(rename = "buffer_id")]
+    BufferId(u64),
+    /// Reference by project-relative path
+    #[serde(rename = "project_path")]
+    ProjectRelativePath(PathBuf),
+    /// Reference by absolute file path
+    #[serde(rename = "absolute_path")]
+    AbsolutePath(PathBuf),
+}
+
+impl DocumentIdentifier {
+    /// Create from buffer ID
+    pub fn from_buffer_id(buffer_id: u64) -> Self {
+        Self::BufferId(buffer_id)
+    }
+
+    /// Create from project-relative path
+    pub fn from_project_path<P: Into<PathBuf>>(path: P) -> Self {
+        Self::ProjectRelativePath(path.into())
+    }
+
+    /// Create from absolute path
+    pub fn from_absolute_path<P: Into<PathBuf>>(path: P) -> Self {
+        Self::AbsolutePath(path.into())
+    }
 }
 
 /// Position in a text document expressed as zero-based line and zero-based character offset.
@@ -936,21 +1000,84 @@ where
         }
     }
 
+    /// Get project root directory from Neovim
     #[instrument(skip(self))]
-    pub async fn lsp_get_code_actions(
+    async fn get_project_root(&self) -> Result<PathBuf, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua("return vim.fn.getcwd()", vec![])
+            .await
+        {
+            Ok(value) => {
+                let cwd = value.as_str().ok_or_else(|| {
+                    NeovimError::Api("Invalid working directory format".to_string())
+                })?;
+                Ok(PathBuf::from(cwd))
+            }
+            Err(e) => Err(NeovimError::Api(format!(
+                "Failed to get working directory: {e}"
+            ))),
+        }
+    }
+
+    /// Universal resolver for converting any DocumentIdentifier to TextDocumentIdentifier
+    #[instrument(skip(self))]
+    async fn resolve_text_document_identifier(
+        &self,
+        identifier: &DocumentIdentifier,
+    ) -> Result<TextDocumentIdentifier, NeovimError> {
+        match identifier {
+            DocumentIdentifier::BufferId(buffer_id) => {
+                // Use existing buffer-based approach
+                self.lsp_make_text_document_params(*buffer_id).await
+            }
+            DocumentIdentifier::ProjectRelativePath(rel_path) => {
+                // Get project root from Neovim
+                let project_root = self.get_project_root().await?;
+                let absolute_path = project_root.join(rel_path);
+                make_text_document_identifier_from_path(absolute_path)
+            }
+            DocumentIdentifier::AbsolutePath(abs_path) => {
+                // Use the existing path-based helper function
+                make_text_document_identifier_from_path(abs_path)
+            }
+        }
+    }
+
+    /// Enhanced code actions method supporting universal document identification
+    #[instrument(skip(self))]
+    pub async fn lsp_get_code_actions_universal(
         &self,
         client_name: &str,
-        buffer_id: u64,
+        document: DocumentIdentifier,
         range: Range,
     ) -> Result<Vec<CodeAction>, NeovimError> {
-        let diagnostics = self
-            .get_buffer_diagnostics(buffer_id)
-            .await
-            .map_err(|e| NeovimError::Api(format!("Failed to get diagnostics: {e}")))?;
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let diagnostics = match &document {
+            DocumentIdentifier::BufferId(buffer_id) => self
+                .get_buffer_diagnostics(*buffer_id)
+                .await
+                .map_err(|e| NeovimError::Api(format!("Failed to get diagnostics: {e}")))?,
+            _ => {
+                // For path-based identifiers, diagnostics might not be available
+                Vec::new()
+            }
+        };
 
         let conn = self.connection.as_ref().ok_or_else(|| {
             NeovimError::Connection("Not connected to any Neovim instance".to_string())
         })?;
+
+        // Get buffer ID for Lua execution (needed for some LSP operations)
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0, // Use buffer 0 as fallback for path-based operations
+        };
 
         match conn
             .nvim
@@ -960,14 +1087,7 @@ where
                     Value::from(client_name), // client_name
                     Value::from(
                         serde_json::to_string(&CodeActionParams {
-                            text_document: self
-                                .lsp_make_text_document_params(buffer_id)
-                                .await
-                                .map_err(|e| {
-                                    NeovimError::Api(format!(
-                                        "Failed to make text document params: {e}"
-                                    ))
-                                })?,
+                            text_document,
                             range,
                             context: CodeActionContext {
                                 diagnostics: diagnostics
@@ -998,6 +1118,198 @@ where
                 debug!("Failed to get LSP code actions: {}", e);
                 Err(NeovimError::Api(format!(
                     "Failed to get LSP code actions: {e}"
+                )))
+            }
+        }
+    }
+
+    /// Enhanced hover method supporting universal document identification
+    #[instrument(skip(self))]
+    pub async fn lsp_hover_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<HoverResult, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        // Get buffer ID for Lua execution (needed for some LSP operations)
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0, // Use buffer 0 as fallback for path-based operations
+        };
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_hover.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&HoverParams {
+                            text_document,
+                            position,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                    Value::from(buffer_id),   // bufnr
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP Hover retrieved successfully");
+                #[derive(Debug, serde::Deserialize)]
+                struct Result {
+                    result: HoverResult,
+                }
+                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        debug!("Failed to parse hover result: {}", e);
+                        return Err(NeovimError::Api(format!(
+                            "Failed to parse hover result: {e}"
+                        )));
+                    }
+                };
+                Ok(result.result)
+            }
+            Err(e) => {
+                debug!("Failed to get LSP hover: {}", e);
+                Err(NeovimError::Api(format!("Failed to get LSP hover: {e}")))
+            }
+        }
+    }
+
+    /// Enhanced document symbols method supporting universal document identification
+    #[instrument(skip(self))]
+    pub async fn lsp_document_symbols_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+    ) -> Result<Option<DocumentSymbolResult>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        // Get buffer ID for Lua execution (needed for some LSP operations)
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0, // Use buffer 0 as fallback for path-based operations
+        };
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_document_symbols.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&DocumentSymbolParams { text_document }).unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                    Value::from(buffer_id),   // bufnr
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP Document symbols retrieved successfully");
+                #[derive(Debug, serde::Deserialize)]
+                struct Result {
+                    result: Option<DocumentSymbolResult>,
+                }
+                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        debug!("Failed to parse document symbols result: {}", e);
+                        return Err(NeovimError::Api(format!(
+                            "Failed to parse document symbols result: {e}"
+                        )));
+                    }
+                };
+                Ok(result.result)
+            }
+            Err(e) => {
+                debug!("Failed to get document symbols: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get document symbols: {e}"
+                )))
+            }
+        }
+    }
+
+    /// Enhanced references method supporting universal document identification
+    #[instrument(skip(self))]
+    pub async fn lsp_references_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+        include_declaration: bool,
+    ) -> Result<Vec<Location>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        // Get buffer ID for Lua execution (needed for some LSP operations)
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0, // Use buffer 0 as fallback for path-based operations
+        };
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_references.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&ReferenceParams {
+                            text_document,
+                            position,
+                            context: ReferenceContext {
+                                include_declaration,
+                            },
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                    Value::from(buffer_id),   // bufnr
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP References retrieved successfully");
+                #[derive(Debug, serde::Deserialize)]
+                struct Result {
+                    result: Option<Vec<Location>>,
+                }
+                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        debug!("Failed to parse references result: {}", e);
+                        return Err(NeovimError::Api(format!(
+                            "Failed to parse references result: {e}"
+                        )));
+                    }
+                };
+                Ok(result.result.unwrap_or_default())
+            }
+            Err(e) => {
+                debug!("Failed to get LSP references: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get LSP references: {e}"
                 )))
             }
         }
@@ -1157,8 +1469,12 @@ where
         buffer_id: u64,
         range: Range,
     ) -> Result<Vec<CodeAction>, NeovimError> {
-        self.lsp_get_code_actions(client_name, buffer_id, range)
-            .await
+        self.lsp_get_code_actions_universal(
+            client_name,
+            DocumentIdentifier::from_buffer_id(buffer_id),
+            range,
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -1168,58 +1484,12 @@ where
         buffer_id: u64,
         position: Position,
     ) -> Result<HoverResult, NeovimError> {
-        let conn = self.connection.as_ref().ok_or_else(|| {
-            NeovimError::Connection("Not connected to any Neovim instance".to_string())
-        })?;
-
-        match conn
-            .nvim
-            .execute_lua(
-                include_str!("lua/lsp_hover.lua"),
-                vec![
-                    Value::from(client_name), // client_name
-                    Value::from(
-                        serde_json::to_string(&HoverParams {
-                            text_document: self
-                                .lsp_make_text_document_params(buffer_id)
-                                .await
-                                .map_err(|e| {
-                                    NeovimError::Api(format!(
-                                        "Failed to make text document params: {e}"
-                                    ))
-                                })?,
-                            position,
-                        })
-                        .unwrap(),
-                    ), // params
-                    Value::from(1000),        // timeout_ms
-                    Value::from(buffer_id),   // bufnr
-                ],
-            )
-            .await
-        {
-            Ok(result) => {
-                debug!("LSP Hover retrieved successfully");
-                #[derive(Debug, serde::Deserialize)]
-                struct Result {
-                    result: HoverResult,
-                }
-                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        debug!("Failed to parse hover result: {}", e);
-                        return Err(NeovimError::Api(format!(
-                            "Failed to parse hover result: {e}"
-                        )));
-                    }
-                };
-                Ok(result.result)
-            }
-            Err(e) => {
-                debug!("Failed to get LSP clients: {}", e);
-                Err(NeovimError::Api(format!("Failed to get LSP clients: {e}")))
-            }
-        }
+        self.lsp_hover_universal(
+            client_name,
+            DocumentIdentifier::from_buffer_id(buffer_id),
+            position,
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -1228,59 +1498,11 @@ where
         client_name: &str,
         buffer_id: u64,
     ) -> Result<Option<DocumentSymbolResult>, NeovimError> {
-        let conn = self.connection.as_ref().ok_or_else(|| {
-            NeovimError::Connection("Not connected to any Neovim instance".to_string())
-        })?;
-
-        match conn
-            .nvim
-            .execute_lua(
-                include_str!("lua/lsp_document_symbols.lua"),
-                vec![
-                    Value::from(client_name), // client_name
-                    Value::from(
-                        serde_json::to_string(&DocumentSymbolParams {
-                            text_document: self
-                                .lsp_make_text_document_params(buffer_id)
-                                .await
-                                .map_err(|e| {
-                                    NeovimError::Api(format!(
-                                        "Failed to make text document params: {e}"
-                                    ))
-                                })?,
-                        })
-                        .unwrap(),
-                    ), // params
-                    Value::from(1000),        // timeout_ms
-                    Value::from(buffer_id),   // bufnr
-                ],
-            )
-            .await
-        {
-            Ok(result) => {
-                debug!("LSP Document symbols retrieved successfully");
-                #[derive(Debug, serde::Deserialize)]
-                struct Result {
-                    result: Option<DocumentSymbolResult>,
-                }
-                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        debug!("Failed to parse document symbols result: {}", e);
-                        return Err(NeovimError::Api(format!(
-                            "Failed to parse document symbols result: {e}"
-                        )));
-                    }
-                };
-                Ok(result.result)
-            }
-            Err(e) => {
-                debug!("Failed to get document symbols: {}", e);
-                Err(NeovimError::Api(format!(
-                    "Failed to get document symbols: {e}"
-                )))
-            }
-        }
+        self.lsp_document_symbols_universal(
+            client_name,
+            DocumentIdentifier::from_buffer_id(buffer_id),
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -1341,63 +1563,57 @@ where
         position: Position,
         include_declaration: bool,
     ) -> Result<Vec<Location>, NeovimError> {
-        let conn = self.connection.as_ref().ok_or_else(|| {
-            NeovimError::Connection("Not connected to any Neovim instance".to_string())
-        })?;
+        self.lsp_references_universal(
+            client_name,
+            DocumentIdentifier::from_buffer_id(buffer_id),
+            position,
+            include_declaration,
+        )
+        .await
+    }
 
-        match conn
-            .nvim
-            .execute_lua(
-                include_str!("lua/lsp_references.lua"),
-                vec![
-                    Value::from(client_name), // client_name
-                    Value::from(
-                        serde_json::to_string(&ReferenceParams {
-                            text_document: self
-                                .lsp_make_text_document_params(buffer_id)
-                                .await
-                                .map_err(|e| {
-                                    NeovimError::Api(format!(
-                                        "Failed to make text document params: {e}"
-                                    ))
-                                })?,
-                            position,
-                            context: ReferenceContext {
-                                include_declaration,
-                            },
-                        })
-                        .unwrap(),
-                    ), // params
-                    Value::from(1000),        // timeout_ms
-                    Value::from(buffer_id),   // bufnr
-                ],
-            )
+    #[instrument(skip(self))]
+    async fn lsp_get_code_actions_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        range: Range,
+    ) -> Result<Vec<CodeAction>, NeovimError> {
+        self.lsp_get_code_actions_universal(client_name, document, range)
             .await
-        {
-            Ok(result) => {
-                debug!("LSP References retrieved successfully");
-                #[derive(Debug, serde::Deserialize)]
-                struct Result {
-                    result: Option<Vec<Location>>,
-                }
-                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        debug!("Failed to parse references result: {}", e);
-                        return Err(NeovimError::Api(format!(
-                            "Failed to parse references result: {e}"
-                        )));
-                    }
-                };
-                Ok(result.result.unwrap_or_default())
-            }
-            Err(e) => {
-                debug!("Failed to get LSP references: {}", e);
-                Err(NeovimError::Api(format!(
-                    "Failed to get LSP references: {e}"
-                )))
-            }
-        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_hover_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<HoverResult, NeovimError> {
+        self.lsp_hover_universal(client_name, document, position)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_document_symbols_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+    ) -> Result<Option<DocumentSymbolResult>, NeovimError> {
+        self.lsp_document_symbols_universal(client_name, document)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_references_universal(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+        include_declaration: bool,
+    ) -> Result<Vec<Location>, NeovimError> {
+        self.lsp_references_universal(client_name, document, position, include_declaration)
+            .await
     }
 }
 
@@ -1535,5 +1751,66 @@ mod tests {
         } else {
             panic!("Expected NeovimError::Api");
         }
+    }
+
+    #[test]
+    fn test_document_identifier_creation() {
+        let buffer_id = DocumentIdentifier::from_buffer_id(42);
+        assert_eq!(buffer_id, DocumentIdentifier::BufferId(42));
+
+        let rel_path = DocumentIdentifier::from_project_path("src/lib.rs");
+        assert_eq!(
+            rel_path,
+            DocumentIdentifier::ProjectRelativePath(PathBuf::from("src/lib.rs"))
+        );
+
+        let abs_path = DocumentIdentifier::from_absolute_path("/usr/src/lib.rs");
+        assert_eq!(
+            abs_path,
+            DocumentIdentifier::AbsolutePath(PathBuf::from("/usr/src/lib.rs"))
+        );
+    }
+
+    #[test]
+    fn test_document_identifier_serde() {
+        // Test BufferId serialization
+        let buffer_id = DocumentIdentifier::from_buffer_id(123);
+        let json = serde_json::to_string(&buffer_id).unwrap();
+        assert!(json.contains("buffer_id"));
+        assert!(json.contains("123"));
+
+        let deserialized: DocumentIdentifier = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, buffer_id);
+
+        // Test ProjectRelativePath serialization
+        let rel_path = DocumentIdentifier::from_project_path("src/main.rs");
+        let json = serde_json::to_string(&rel_path).unwrap();
+        assert!(json.contains("project_path"));
+        assert!(json.contains("src/main.rs"));
+
+        let deserialized: DocumentIdentifier = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, rel_path);
+
+        // Test AbsolutePath serialization
+        let abs_path = DocumentIdentifier::from_absolute_path("/tmp/test.rs");
+        let json = serde_json::to_string(&abs_path).unwrap();
+        assert!(json.contains("absolute_path"));
+        assert!(json.contains("/tmp/test.rs"));
+
+        let deserialized: DocumentIdentifier = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, abs_path);
+    }
+
+    #[test]
+    fn test_document_identifier_json_schema() {
+        use schemars::schema_for;
+
+        let schema = schema_for!(DocumentIdentifier);
+        let schema_json = serde_json::to_string(&schema).unwrap();
+
+        // Verify the schema contains the expected enum variants
+        assert!(schema_json.contains("buffer_id"));
+        assert!(schema_json.contains("project_path"));
+        assert!(schema_json.contains("absolute_path"));
     }
 }
