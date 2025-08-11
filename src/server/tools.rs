@@ -96,6 +96,23 @@ pub struct WorkspaceSymbolsParams {
     pub query: String,
 }
 
+/// References parameters with connection context
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ReferencesParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Neovim Buffer ID
+    pub id: u64,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Symbol position in the buffer, line number starts from 0
+    pub line: u64,
+    /// Symbol position in the buffer, character number starts from 0
+    pub character: u64,
+    /// Include the declaration of the current symbol in the results
+    pub include_declaration: bool,
+}
+
 #[tool_router]
 impl NeovimMcpServer {
     #[tool(description = "Get available Neovim targets")]
@@ -324,6 +341,27 @@ impl NeovimMcpServer {
             .lsp_workspace_symbols(&lsp_client_name, &query)
             .await?;
         Ok(CallToolResult::success(vec![Content::json(symbols)?]))
+    }
+
+    #[tool(description = "Get references for a symbol at a specific position")]
+    #[instrument(skip(self))]
+    pub async fn lsp_references(
+        &self,
+        Parameters(ReferencesParams {
+            connection_id,
+            id,
+            lsp_client_name,
+            line,
+            character,
+            include_declaration,
+        }): Parameters<ReferencesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let position = Position { line, character };
+        let references = client
+            .lsp_references(&lsp_client_name, id, position, include_declaration)
+            .await?;
+        Ok(CallToolResult::success(vec![Content::json(references)?]))
     }
 }
 

@@ -66,6 +66,15 @@ pub trait NeovimClientTrait: Sync {
         client_name: &str,
         query: &str,
     ) -> Result<WorkspaceSymbolResult, NeovimError>;
+
+    /// Get references for a symbol at a specific position
+    async fn lsp_references(
+        &self,
+        client_name: &str,
+        buffer_id: u64,
+        position: Position,
+        include_declaration: bool,
+    ) -> Result<Vec<Location>, NeovimError>;
 }
 
 pub struct NeovimHandler<T> {
@@ -446,6 +455,21 @@ pub struct CodeAction {
 pub struct HoverParams {
     pub text_document: TextDocumentIdentifier,
     pub position: Position,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceParams {
+    pub text_document: TextDocumentIdentifier,
+    pub position: Position,
+    pub context: ReferenceContext,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceContext {
+    /// Include the declaration of the current symbol.
+    pub include_declaration: bool,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -1285,6 +1309,73 @@ where
             }
         }
     }
+
+    #[instrument(skip(self))]
+    async fn lsp_references(
+        &self,
+        client_name: &str,
+        buffer_id: u64,
+        position: Position,
+        include_declaration: bool,
+    ) -> Result<Vec<Location>, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_references.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&ReferenceParams {
+                            text_document: self
+                                .lsp_make_text_document_params(buffer_id)
+                                .await
+                                .map_err(|e| {
+                                    NeovimError::Api(format!(
+                                        "Failed to make text document params: {e}"
+                                    ))
+                                })?,
+                            position,
+                            context: ReferenceContext {
+                                include_declaration,
+                            },
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                    Value::from(buffer_id),   // bufnr
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP References retrieved successfully");
+                #[derive(Debug, serde::Deserialize)]
+                struct Result {
+                    result: Option<Vec<Location>>,
+                }
+                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        debug!("Failed to parse references result: {}", e);
+                        return Err(NeovimError::Api(format!(
+                            "Failed to parse references result: {e}"
+                        )));
+                    }
+                };
+                Ok(result.result.unwrap_or_else(Vec::new))
+            }
+            Err(e) => {
+                debug!("Failed to get LSP references: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get LSP references: {e}"
+                )))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1371,5 +1462,29 @@ mod tests {
 
         let json = serde_json::to_string(&params).unwrap();
         assert!(json.contains("function"));
+    }
+
+    #[test]
+    fn test_reference_params_serialization() {
+        let params = ReferenceParams {
+            text_document: TextDocumentIdentifier {
+                uri: "file:///test.rs".to_string(),
+                version: Some(1),
+            },
+            position: Position {
+                line: 10,
+                character: 5,
+            },
+            context: ReferenceContext {
+                include_declaration: true,
+            },
+        };
+
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("textDocument"));
+        assert!(json.contains("position"));
+        assert!(json.contains("context"));
+        assert!(json.contains("includeDeclaration"));
+        assert!(json.contains("true"));
     }
 }
