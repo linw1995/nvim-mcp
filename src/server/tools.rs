@@ -120,6 +120,24 @@ impl NeovimMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let connection_id = self.generate_shorter_connection_id(&path);
 
+        // If connection already exists for this target, disconnect the old one first
+        if let Some(mut old_client) = self.nvim_clients.get_mut(&connection_id) {
+            if let Some(existing_target) = old_client.target() {
+                if existing_target == path {
+                    // Same target, no need to reconnect
+                    return Ok(CallToolResult::success(vec![Content::json(
+                        serde_json::json!({
+                            "connection_id": connection_id,
+                            "target": path,
+                            "message": format!("Already connected to Neovim at {path}")
+                        }),
+                    )?]));
+                }
+            }
+            // Different target with same ID, disconnect old connection
+            let _ = old_client.disconnect().await;
+        }
+
         let mut client = NeovimClient::new();
         client.connect_path(&path).await?;
         client.setup_diagnostics_changed_autocmd().await?;
@@ -143,6 +161,24 @@ impl NeovimMcpServer {
         Parameters(ConnectNvimRequest { target: address }): Parameters<ConnectNvimRequest>,
     ) -> Result<CallToolResult, McpError> {
         let connection_id = self.generate_shorter_connection_id(&address);
+
+        // If connection already exists for this target, disconnect the old one first
+        if let Some(mut old_client) = self.nvim_clients.get_mut(&connection_id) {
+            if let Some(existing_target) = old_client.target() {
+                if existing_target == address {
+                    // Same target, no need to reconnect
+                    return Ok(CallToolResult::success(vec![Content::json(
+                        serde_json::json!({
+                            "connection_id": connection_id,
+                            "target": address,
+                            "message": format!("Already connected to Neovim at {address}")
+                        }),
+                    )?]));
+                }
+            }
+            // Different target with same ID, disconnect old connection
+            let _ = old_client.disconnect().await;
+        }
 
         let mut client = NeovimClient::new();
         client.connect_tcp(&address).await?;
