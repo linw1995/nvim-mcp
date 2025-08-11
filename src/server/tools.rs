@@ -317,7 +317,7 @@ impl NeovimMcpServer {
         let range = Range { start, end };
 
         let code_actions = client
-            .lsp_get_code_actions_universal(&lsp_client_name, document, range)
+            .lsp_get_code_actions(&lsp_client_name, document, range)
             .await?;
         Ok(CallToolResult::success(vec![Content::json(code_actions)?]))
     }
@@ -337,7 +337,7 @@ impl NeovimMcpServer {
         let client = self.get_connection(&connection_id)?;
         let position = Position { line, character };
         let hover = client
-            .lsp_hover_universal(&lsp_client_name, document, position)
+            .lsp_hover(&lsp_client_name, document, position)
             .await?;
         Ok(CallToolResult::success(vec![Content::json(hover)?]))
     }
@@ -354,7 +354,7 @@ impl NeovimMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let symbols = client
-            .lsp_document_symbols_universal(&lsp_client_name, document)
+            .lsp_document_symbols(&lsp_client_name, document)
             .await?;
         Ok(CallToolResult::success(vec![Content::json(symbols)?]))
     }
@@ -375,7 +375,7 @@ impl NeovimMcpServer {
         let client = self.get_connection(&connection_id)?;
         let position = Position { line, character };
         let references = client
-            .lsp_references_universal(&lsp_client_name, document, position, include_declaration)
+            .lsp_references(&lsp_client_name, document, position, include_declaration)
             .await?;
         Ok(CallToolResult::success(vec![Content::json(references)?]))
     }

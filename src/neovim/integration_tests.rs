@@ -4,7 +4,7 @@ use tokio::time::sleep;
 use tracing::info;
 use tracing_test::traced_test;
 
-use crate::neovim::client::{Position, Range};
+use crate::neovim::client::{DocumentIdentifier, Position, Range};
 use crate::neovim::{NeovimClient, NeovimClientTrait};
 use crate::test_utils::*;
 
@@ -241,7 +241,7 @@ async fn test_code_action() {
     let result = client
         .lsp_get_code_actions(
             "luals",
-            0,
+            DocumentIdentifier::from_buffer_id(0),
             Range {
                 start: Position {
                     line: diagnostic.lnum,

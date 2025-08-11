@@ -38,27 +38,27 @@ pub trait NeovimClientTrait: Sync {
     /// Get LSP clients
     async fn lsp_get_clients(&self) -> Result<Vec<LspClient>, NeovimError>;
 
-    /// Get LSP code actions for a buffer range
+    /// Get LSP code actions
     async fn lsp_get_code_actions(
         &self,
         client_name: &str,
-        buffer_id: u64,
+        document: DocumentIdentifier,
         range: Range,
     ) -> Result<Vec<CodeAction>, NeovimError>;
 
-    /// Get LSP hover information for a specific position in a buffer
+    /// Get LSP hover information for a specific position
     async fn lsp_hover(
         &self,
         client_name: &str,
-        buffer_id: u64,
+        document: DocumentIdentifier,
         position: Position,
     ) -> Result<HoverResult, NeovimError>;
 
-    /// Get document symbols for a specific buffer
+    /// Get document symbols for a specific buffer or document
     async fn lsp_document_symbols(
         &self,
         client_name: &str,
-        buffer_id: u64,
+        document: DocumentIdentifier,
     ) -> Result<Option<DocumentSymbolResult>, NeovimError>;
 
     /// Search for workspace symbols by query
@@ -70,38 +70,6 @@ pub trait NeovimClientTrait: Sync {
 
     /// Get references for a symbol at a specific position
     async fn lsp_references(
-        &self,
-        client_name: &str,
-        buffer_id: u64,
-        position: Position,
-        include_declaration: bool,
-    ) -> Result<Vec<Location>, NeovimError>;
-
-    /// Enhanced code actions method supporting universal document identification
-    async fn lsp_get_code_actions_universal(
-        &self,
-        client_name: &str,
-        document: DocumentIdentifier,
-        range: Range,
-    ) -> Result<Vec<CodeAction>, NeovimError>;
-
-    /// Enhanced hover method supporting universal document identification
-    async fn lsp_hover_universal(
-        &self,
-        client_name: &str,
-        document: DocumentIdentifier,
-        position: Position,
-    ) -> Result<HoverResult, NeovimError>;
-
-    /// Enhanced document symbols method supporting universal document identification
-    async fn lsp_document_symbols_universal(
-        &self,
-        client_name: &str,
-        document: DocumentIdentifier,
-    ) -> Result<Option<DocumentSymbolResult>, NeovimError>;
-
-    /// Enhanced references method supporting universal document identification
-    async fn lsp_references_universal(
         &self,
         client_name: &str,
         document: DocumentIdentifier,
@@ -1047,7 +1015,7 @@ where
 
     /// Enhanced code actions method supporting universal document identification
     #[instrument(skip(self))]
-    pub async fn lsp_get_code_actions_universal(
+    pub async fn lsp_get_code_actions(
         &self,
         client_name: &str,
         document: DocumentIdentifier,
@@ -1122,7 +1090,7 @@ where
 
     /// Enhanced hover method supporting universal document identification
     #[instrument(skip(self))]
-    pub async fn lsp_hover_universal(
+    pub async fn lsp_hover(
         &self,
         client_name: &str,
         document: DocumentIdentifier,
@@ -1185,7 +1153,7 @@ where
 
     /// Enhanced document symbols method supporting universal document identification
     #[instrument(skip(self))]
-    pub async fn lsp_document_symbols_universal(
+    pub async fn lsp_document_symbols(
         &self,
         client_name: &str,
         document: DocumentIdentifier,
@@ -1245,7 +1213,7 @@ where
 
     /// Enhanced references method supporting universal document identification
     #[instrument(skip(self))]
-    pub async fn lsp_references_universal(
+    pub async fn lsp_references(
         &self,
         client_name: &str,
         document: DocumentIdentifier,
@@ -1463,43 +1431,30 @@ where
     async fn lsp_get_code_actions(
         &self,
         client_name: &str,
-        buffer_id: u64,
+        document: DocumentIdentifier,
         range: Range,
     ) -> Result<Vec<CodeAction>, NeovimError> {
-        self.lsp_get_code_actions_universal(
-            client_name,
-            DocumentIdentifier::from_buffer_id(buffer_id),
-            range,
-        )
-        .await
+        self.lsp_get_code_actions(client_name, document, range)
+            .await
     }
 
     #[instrument(skip(self))]
     async fn lsp_hover(
         &self,
         client_name: &str,
-        buffer_id: u64,
+        document: DocumentIdentifier,
         position: Position,
     ) -> Result<HoverResult, NeovimError> {
-        self.lsp_hover_universal(
-            client_name,
-            DocumentIdentifier::from_buffer_id(buffer_id),
-            position,
-        )
-        .await
+        self.lsp_hover(client_name, document, position).await
     }
 
     #[instrument(skip(self))]
     async fn lsp_document_symbols(
         &self,
         client_name: &str,
-        buffer_id: u64,
+        document: DocumentIdentifier,
     ) -> Result<Option<DocumentSymbolResult>, NeovimError> {
-        self.lsp_document_symbols_universal(
-            client_name,
-            DocumentIdentifier::from_buffer_id(buffer_id),
-        )
-        .await
+        self.lsp_document_symbols(client_name, document).await
     }
 
     #[instrument(skip(self))]
@@ -1556,60 +1511,11 @@ where
     async fn lsp_references(
         &self,
         client_name: &str,
-        buffer_id: u64,
-        position: Position,
-        include_declaration: bool,
-    ) -> Result<Vec<Location>, NeovimError> {
-        self.lsp_references_universal(
-            client_name,
-            DocumentIdentifier::from_buffer_id(buffer_id),
-            position,
-            include_declaration,
-        )
-        .await
-    }
-
-    #[instrument(skip(self))]
-    async fn lsp_get_code_actions_universal(
-        &self,
-        client_name: &str,
-        document: DocumentIdentifier,
-        range: Range,
-    ) -> Result<Vec<CodeAction>, NeovimError> {
-        self.lsp_get_code_actions_universal(client_name, document, range)
-            .await
-    }
-
-    #[instrument(skip(self))]
-    async fn lsp_hover_universal(
-        &self,
-        client_name: &str,
-        document: DocumentIdentifier,
-        position: Position,
-    ) -> Result<HoverResult, NeovimError> {
-        self.lsp_hover_universal(client_name, document, position)
-            .await
-    }
-
-    #[instrument(skip(self))]
-    async fn lsp_document_symbols_universal(
-        &self,
-        client_name: &str,
-        document: DocumentIdentifier,
-    ) -> Result<Option<DocumentSymbolResult>, NeovimError> {
-        self.lsp_document_symbols_universal(client_name, document)
-            .await
-    }
-
-    #[instrument(skip(self))]
-    async fn lsp_references_universal(
-        &self,
-        client_name: &str,
         document: DocumentIdentifier,
         position: Position,
         include_declaration: bool,
     ) -> Result<Vec<Location>, NeovimError> {
-        self.lsp_references_universal(client_name, document, position, include_declaration)
+        self.lsp_references(client_name, document, position, include_declaration)
             .await
     }
 }
