@@ -100,6 +100,7 @@ async fn test_list_tools() -> Result<(), Box<dyn std::error::Error>> {
     assert!(tool_names.contains(&"disconnect"));
     assert!(tool_names.contains(&"list_buffers"));
     assert!(tool_names.contains(&"lsp_clients"));
+    assert!(tool_names.contains(&"lsp_references"));
 
     // Verify tool descriptions are present
     for tool in &tools.tools {
