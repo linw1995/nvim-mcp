@@ -1,6 +1,7 @@
 #![allow(rustdoc::invalid_codeblock_attributes)]
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use async_trait::async_trait;
 use nvim_rs::{Handler, Neovim, create::tokio as create};
@@ -760,6 +761,28 @@ type Connection = tokio::net::UnixStream;
 #[cfg(windows)]
 type Connection = tokio::net::windows::named_pipe::NamedPipeClient;
 
+/// Creates a TextDocumentIdentifier from a file path
+/// This utility function works independently of Neovim buffers
+#[allow(dead_code)]
+pub fn make_text_document_identifier_from_path<P: AsRef<Path>>(
+    file_path: P,
+) -> Result<TextDocumentIdentifier, NeovimError> {
+    let path = file_path.as_ref();
+
+    // Convert to absolute path and canonicalize
+    let absolute_path = path.canonicalize().map_err(|e| {
+        NeovimError::Api(format!("Failed to resolve path {}: {}", path.display(), e))
+    })?;
+
+    // Convert to file:// URI
+    let uri = format!("file://{}", absolute_path.display());
+
+    Ok(TextDocumentIdentifier {
+        uri,
+        version: None, // No version for path-based identifiers
+    })
+}
+
 impl NeovimClient<Connection> {
     #[instrument(skip(self))]
     pub async fn connect_path(&mut self, path: &str) -> Result<(), NeovimError> {
@@ -1486,5 +1509,31 @@ mod tests {
         assert!(json.contains("context"));
         assert!(json.contains("includeDeclaration"));
         assert!(json.contains("true"));
+    }
+
+    #[test]
+    fn test_make_text_document_identifier_from_path() {
+        // Test with current file (this source file should exist)
+        let current_file = file!();
+        let result = make_text_document_identifier_from_path(current_file);
+
+        assert!(result.is_ok());
+        let text_doc = result.unwrap();
+        assert!(text_doc.uri.starts_with("file://"));
+        assert!(text_doc.uri.ends_with("client.rs"));
+        assert_eq!(text_doc.version, None);
+    }
+
+    #[test]
+    fn test_make_text_document_identifier_from_path_invalid() {
+        // Test with non-existent path
+        let result = make_text_document_identifier_from_path("/nonexistent/path/file.rs");
+        assert!(result.is_err());
+
+        if let Err(NeovimError::Api(msg)) = result {
+            assert!(msg.contains("Failed to resolve path"));
+        } else {
+            panic!("Expected NeovimError::Api");
+        }
     }
 }
