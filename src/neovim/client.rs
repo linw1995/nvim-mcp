@@ -1366,7 +1366,7 @@ where
                         )));
                     }
                 };
-                Ok(result.result.unwrap_or_else(Vec::new))
+                Ok(result.result.unwrap_or_default())
             }
             Err(e) => {
                 debug!("Failed to get LSP references: {}", e);
