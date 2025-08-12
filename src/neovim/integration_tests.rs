@@ -5,7 +5,7 @@ use tracing::info;
 use tracing_test::traced_test;
 
 use crate::neovim::client::{DocumentIdentifier, Position, Range};
-use crate::neovim::{NeovimClient, NeovimClientTrait};
+use crate::neovim::{NeovimClient, NeovimClientTrait, WorkspaceEdit};
 use crate::test_utils::*;
 
 #[tokio::test]
@@ -256,6 +256,142 @@ async fn test_code_action() {
         .await;
     assert!(result.is_ok(), "Failed to get code actions: {result:?}");
     info!("Code actions: {:?}", result);
+
+    // Guard automatically cleans up when it goes out of scope
+}
+
+#[tokio::test]
+#[traced_test]
+#[cfg(any(unix, windows))]
+async fn test_lsp_resolve_code_action() {
+    let ipc_path = generate_random_ipc_path();
+
+    let child = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("diagnostic_problems.lua")
+            .to_str()
+            .unwrap(),
+    )
+    .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
+    let mut client = NeovimClient::new();
+
+    // Connect to instance
+    let result = client.connect_path(&ipc_path).await;
+    assert!(result.is_ok(), "Failed to connect to instance");
+
+    // Set up diagnostics and wait for LSP
+    let result = client.setup_diagnostics_changed_autocmd().await;
+    assert!(
+        result.is_ok(),
+        "Failed to setup diagnostics autocmd: {result:?}"
+    );
+
+    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+
+    let result = client.get_buffer_diagnostics(0).await;
+    assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
+    let diagnostics = result.unwrap();
+    info!("Diagnostics: {:?}", diagnostics);
+
+    if let Some(diagnostic) = diagnostics.first() {
+        let result = client
+            .lsp_get_code_actions(
+                "luals",
+                DocumentIdentifier::from_buffer_id(0),
+                Range {
+                    start: Position {
+                        line: diagnostic.lnum,
+                        character: diagnostic.col,
+                    },
+                    end: Position {
+                        line: diagnostic.end_lnum,
+                        character: diagnostic.end_col,
+                    },
+                },
+            )
+            .await;
+        assert!(result.is_ok(), "Failed to get code actions: {result:?}");
+        let code_actions = result.unwrap();
+        info!("Code actions: {:?}", code_actions);
+
+        if let Some(code_action) = code_actions.first() {
+            // Test resolving the code action
+            // We need to create a copy since CodeAction doesn't implement Clone
+            let code_action_json = serde_json::to_string(code_action).unwrap();
+            let code_action_copy: crate::neovim::CodeAction =
+                serde_json::from_str(&code_action_json).unwrap();
+
+            let result = client
+                .lsp_resolve_code_action("luals", code_action_copy)
+                .await;
+            assert!(result.is_ok(), "Failed to resolve code action: {result:?}");
+            let resolved_action = result.unwrap();
+            info!("Resolved code action: {:?}", resolved_action);
+
+            // Just verify that we got a resolved action back
+            // We can't easily compare fields since they're private
+            assert!(
+                serde_json::to_string(&resolved_action).is_ok(),
+                "Resolved action should be serializable"
+            );
+        }
+    }
+
+    // Guard automatically cleans up when it goes out of scope
+}
+
+#[tokio::test]
+#[traced_test]
+#[cfg(any(unix, windows))]
+async fn test_lsp_apply_workspace_edit() {
+    let ipc_path = generate_random_ipc_path();
+
+    let child = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("diagnostic_problems.lua")
+            .to_str()
+            .unwrap(),
+    )
+    .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
+    let mut client = NeovimClient::new();
+
+    // Connect to instance
+    let result = client.connect_path(&ipc_path).await;
+    assert!(result.is_ok(), "Failed to connect to instance");
+
+    // Set up diagnostics and wait for LSP
+    let result = client.setup_diagnostics_changed_autocmd().await;
+    assert!(
+        result.is_ok(),
+        "Failed to setup diagnostics autocmd: {result:?}"
+    );
+
+    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+
+    // Create a simple workspace edit for testing
+    let workspace_edit: WorkspaceEdit = serde_json::from_str(
+        r#"{
+            "changes": {}
+        }"#,
+    )
+    .expect("Failed to create test workspace edit");
+
+    // Test applying the workspace edit
+    let result = client
+        .lsp_apply_workspace_edit("luals", workspace_edit)
+        .await;
+    assert!(result.is_ok(), "Failed to apply workspace edit: {result:?}");
+    let apply_result = result.unwrap();
+    info!("Apply workspace edit result: {:?}", apply_result);
+
+    // The result should have a valid structure
+    // Even if the edit is empty, it should be processed and return a valid result
+    // We can't predict if it will be applied or not, but we can verify the structure
+    let _ = apply_result.applied; // This ensures the field exists and is accessible
 
     // Guard automatically cleans up when it goes out of scope
 }
