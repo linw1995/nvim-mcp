@@ -320,7 +320,7 @@ pub struct Range {
 ///
 /// The set of kinds is open and client needs to announce the kinds it supports
 /// to the server during initialization.
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum CodeActionKind {
     /// Empty kind.
@@ -2110,5 +2110,92 @@ mod tests {
             let from_string: DocumentIdentifier = serde_json::from_str(&json_string).unwrap();
             assert_eq!(original, from_string);
         }
+    }
+
+    #[test]
+    fn test_code_action_serialization() {
+        let code_action = CodeAction {
+            title: "Fix this issue".to_string(),
+            kind: Some(CodeActionKind::Quickfix),
+            diagnostics: Some(vec![]),
+            is_preferred: Some(true),
+            disabled: None,
+            edit: Some(WorkspaceEdit {
+                changes: Some(std::collections::HashMap::new()),
+                document_changes: None,
+                change_annotations: None,
+            }),
+            command: None,
+            data: None,
+        };
+
+        let json = serde_json::to_string(&code_action).unwrap();
+        assert!(json.contains("Fix this issue"));
+        assert!(json.contains("quickfix"));
+        
+        // Test round-trip
+        let deserialized: CodeAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.title, "Fix this issue");
+        assert_eq!(deserialized.kind, Some(CodeActionKind::Quickfix));
+    }
+
+    #[test]
+    fn test_workspace_edit_serialization() {
+        let mut changes = std::collections::HashMap::new();
+        changes.insert(
+            "file:///test.rs".to_string(),
+            vec![TextEdit {
+                range: Range {
+                    start: Position { line: 0, character: 0 },
+                    end: Position { line: 0, character: 5 },
+                },
+                new_text: "hello".to_string(),
+                annotation_id: None,
+            }],
+        );
+
+        let workspace_edit = WorkspaceEdit {
+            changes: Some(changes),
+            document_changes: None,
+            change_annotations: None,
+        };
+
+        let json = serde_json::to_string(&workspace_edit).unwrap();
+        assert!(json.contains("file:///test.rs"));
+        assert!(json.contains("hello"));
+        
+        // Test round-trip
+        let deserialized: WorkspaceEdit = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.changes.is_some());
+    }
+
+    #[test]
+    fn test_apply_workspace_edit_result_serialization() {
+        let result = ApplyWorkspaceEditResult {
+            applied: true,
+            failure_reason: None,
+            failed_change: None,
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"applied\":true"));
+        
+        // Test with failure
+        let failed_result = ApplyWorkspaceEditResult {
+            applied: false,
+            failure_reason: Some("Permission denied".to_string()),
+            failed_change: Some(1),
+        };
+
+        let json = serde_json::to_string(&failed_result).unwrap();
+        assert!(json.contains("\"applied\":false"));
+        assert!(json.contains("Permission denied"));
+        assert!(json.contains("\"failedChange\":1"));
+        
+        // Test round-trip
+        let deserialized: ApplyWorkspaceEditResult = serde_json::from_str(&json).unwrap();
+        assert!(!deserialized.applied);
+        assert_eq!(deserialized.failure_reason, Some("Permission denied".to_string()));
+        assert_eq!(deserialized.failed_change, Some(1));
     }
 }
