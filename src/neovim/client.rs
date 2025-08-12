@@ -454,7 +454,7 @@ pub struct TextEdit {
     annotation_id: Option<String>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdit {
     /// Holds changes to existing resources.
@@ -485,6 +485,46 @@ pub struct WorkspaceEdit {
     change_annotations: Option<HashMap<String, serde_json::Value>>,
 }
 
+impl<'de> serde::Deserialize<'de> for WorkspaceEdit {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum WorkspaceEditHelper {
+            String(String),
+            Object(WorkspaceEditInner),
+        }
+
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct WorkspaceEditInner {
+            changes: Option<std::collections::HashMap<String, Vec<TextEdit>>>,
+            document_changes: Option<Vec<serde_json::Value>>,
+            change_annotations: Option<HashMap<String, serde_json::Value>>,
+        }
+
+        let helper = WorkspaceEditHelper::deserialize(deserializer)?;
+        match helper {
+            WorkspaceEditHelper::String(s) => {
+                let inner: WorkspaceEditInner =
+                    serde_json::from_str(&s).map_err(serde::de::Error::custom)?;
+                Ok(WorkspaceEdit {
+                    changes: inner.changes,
+                    document_changes: inner.document_changes,
+                    change_annotations: inner.change_annotations,
+                })
+            }
+            WorkspaceEditHelper::Object(inner) => Ok(WorkspaceEdit {
+                changes: inner.changes,
+                document_changes: inner.document_changes,
+                change_annotations: inner.change_annotations,
+            }),
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Command {
     /// Title of the command, like `save`.
@@ -501,7 +541,7 @@ pub struct Command {
 ///
 /// A CodeAction must set either `edit` and/or a `command`. If both are supplied,
 /// the `edit` is applied first, then the `command` is executed.
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
     /// A short, human-readable, title for this code action.
@@ -555,6 +595,61 @@ pub struct CodeAction {
     ///
     /// @since 3.16.0
     data: Option<serde_json::Value>,
+}
+
+impl<'de> serde::Deserialize<'de> for CodeAction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum CodeActionHelper {
+            String(String),
+            Object(Box<CodeActionInner>),
+        }
+
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CodeActionInner {
+            title: String,
+            kind: Option<CodeActionKind>,
+            diagnostics: Option<Vec<LSPDiagnostic>>,
+            is_preferred: Option<bool>,
+            disabled: Option<Disabled>,
+            edit: Option<WorkspaceEdit>,
+            command: Option<Command>,
+            data: Option<serde_json::Value>,
+        }
+
+        let helper = CodeActionHelper::deserialize(deserializer)?;
+        match helper {
+            CodeActionHelper::String(s) => {
+                let inner: CodeActionInner =
+                    serde_json::from_str(&s).map_err(serde::de::Error::custom)?;
+                Ok(CodeAction {
+                    title: inner.title,
+                    kind: inner.kind,
+                    diagnostics: inner.diagnostics,
+                    is_preferred: inner.is_preferred,
+                    disabled: inner.disabled,
+                    edit: inner.edit,
+                    command: inner.command,
+                    data: inner.data,
+                })
+            }
+            CodeActionHelper::Object(inner) => Ok(CodeAction {
+                title: inner.title,
+                kind: inner.kind,
+                diagnostics: inner.diagnostics,
+                is_preferred: inner.is_preferred,
+                disabled: inner.disabled,
+                edit: inner.edit,
+                command: inner.command,
+                data: inner.data,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -2203,5 +2298,75 @@ mod tests {
             Some("Permission denied".to_string())
         );
         assert_eq!(deserialized.failed_change, Some(1));
+    }
+
+    #[test]
+    fn test_code_action_string_deserialization() {
+        // Test that CodeAction can deserialize from both object and string formats
+        let code_action = CodeAction {
+            title: "Fix this issue".to_string(),
+            kind: Some(CodeActionKind::Quickfix),
+            diagnostics: None,
+            is_preferred: Some(true),
+            disabled: None,
+            edit: None,
+            command: None,
+            data: None,
+        };
+
+        // Serialize to JSON string
+        let json = serde_json::to_string(&code_action).unwrap();
+
+        // Test direct object deserialization
+        let deserialized_object: CodeAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized_object.title, "Fix this issue");
+        assert_eq!(deserialized_object.kind, Some(CodeActionKind::Quickfix));
+
+        // Test string-wrapped deserialization
+        let json_string = format!("\"{}\"", json.replace("\"", "\\\""));
+        let deserialized_string: CodeAction = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(deserialized_string.title, "Fix this issue");
+        assert_eq!(deserialized_string.kind, Some(CodeActionKind::Quickfix));
+    }
+
+    #[test]
+    fn test_workspace_edit_string_deserialization() {
+        // Test that WorkspaceEdit can deserialize from both object and string formats
+        let mut changes = std::collections::HashMap::new();
+        changes.insert(
+            "file:///test.rs".to_string(),
+            vec![TextEdit {
+                range: Range {
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 5,
+                    },
+                },
+                new_text: "hello".to_string(),
+                annotation_id: None,
+            }],
+        );
+
+        let workspace_edit = WorkspaceEdit {
+            changes: Some(changes),
+            document_changes: None,
+            change_annotations: None,
+        };
+
+        // Serialize to JSON string
+        let json = serde_json::to_string(&workspace_edit).unwrap();
+
+        // Test direct object deserialization
+        let deserialized_object: WorkspaceEdit = serde_json::from_str(&json).unwrap();
+        assert!(deserialized_object.changes.is_some());
+
+        // Test string-wrapped deserialization
+        let json_string = format!("\"{}\"", json.replace("\"", "\\\""));
+        let deserialized_string: WorkspaceEdit = serde_json::from_str(&json_string).unwrap();
+        assert!(deserialized_string.changes.is_some());
     }
 }
