@@ -1,8 +1,10 @@
 #![allow(rustdoc::invalid_codeblock_attributes)]
 
 use std::collections::HashMap;
-use std::fmt;
+use std::fmt::{self, Display};
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use async_trait::async_trait;
 use nvim_rs::{Handler, Neovim, create::tokio as create};
@@ -202,8 +204,55 @@ pub struct TextDocumentIdentifier {
     version: Option<i32>,
 }
 
+/// This is a Visitor that forwards string types to T's `FromStr` impl and
+/// forwards map types to T's `Deserialize` impl. The `PhantomData` is to
+/// keep the compiler from complaining about T being an unused generic type
+/// parameter. We need T in order to know the Value type for the Visitor
+/// impl.
+struct StringOrStruct<T>(PhantomData<fn() -> T>);
+
+impl<'de, T> Visitor<'de> for StringOrStruct<T>
+where
+    T: Deserialize<'de> + FromStr,
+    <T as FromStr>::Err: Display,
+{
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("string or map")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<T, E>
+    where
+        E: de::Error,
+    {
+        FromStr::from_str(value).map_err(de::Error::custom)
+    }
+
+    fn visit_map<M>(self, map: M) -> Result<T, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        // `MapAccessDeserializer` is a wrapper that turns a `MapAccess`
+        // into a `Deserializer`, allowing it to be used as the input to T's
+        // `Deserialize` implementation. T then deserializes itself using
+        // the entries from the map visitor.
+        Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))
+    }
+}
+
+/// Custom deserializer function that handles both formats
+pub fn string_or_struct<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + FromStr,
+    <T as FromStr>::Err: Display,
+{
+    deserializer.deserialize_any(StringOrStruct(PhantomData))
+}
+
 /// Universal identifier for text documents supporting multiple reference types
-#[derive(Debug, Clone, PartialEq, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DocumentIdentifier {
     /// Reference by Neovim buffer ID (for currently open files)
@@ -214,65 +263,19 @@ pub enum DocumentIdentifier {
     AbsolutePath(PathBuf),
 }
 
-/// Supports both string and struct deserialization for DocumentIdentifier.
-/// Compatible with Claude Code when using subscription.
-struct DocumentIdentifierVisitor;
+macro_rules! impl_fromstr_serde_json {
+    ($type:ty) => {
+        impl FromStr for $type {
+            type Err = serde_json::Error;
 
-impl<'de> Visitor<'de> for DocumentIdentifierVisitor {
-    type Value = DocumentIdentifier;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("string or object")
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        serde_json::from_str(value)
-            .map_err(|e| de::Error::custom(format!("Failed to parse JSON string: {e}")))
-    }
-
-    fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-    where
-        M: MapAccess<'de>,
-    {
-        while let Some(key) = map.next_key::<String>()? {
-            match key.as_str() {
-                "buffer_id" => {
-                    let value: u64 = map.next_value()?;
-                    return Ok(DocumentIdentifier::BufferId(value));
-                }
-                "project_relative_path" => {
-                    let value: String = map.next_value()?;
-                    return Ok(DocumentIdentifier::ProjectRelativePath(PathBuf::from(
-                        value,
-                    )));
-                }
-                "absolute_path" => {
-                    let value: String = map.next_value()?;
-                    return Ok(DocumentIdentifier::AbsolutePath(PathBuf::from(value)));
-                }
-                _ => {
-                    // Skip unknown keys to be forward compatible
-                    let _: serde::de::IgnoredAny = map.next_value()?;
-                }
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                serde_json::from_str(s)
             }
         }
-        Err(de::Error::custom(
-            "Expected one of: buffer_id, project_relative_path, or absolute_path",
-        ))
-    }
+    };
 }
 
-impl<'de> Deserialize<'de> for DocumentIdentifier {
-    fn deserialize<D>(deserializer: D) -> Result<DocumentIdentifier, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_any(DocumentIdentifierVisitor)
-    }
-}
+impl_fromstr_serde_json!(DocumentIdentifier);
 
 impl DocumentIdentifier {
     /// Create from buffer ID
@@ -454,7 +457,7 @@ pub struct TextEdit {
     annotation_id: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdit {
     /// Holds changes to existing resources.
@@ -485,45 +488,7 @@ pub struct WorkspaceEdit {
     change_annotations: Option<HashMap<String, serde_json::Value>>,
 }
 
-impl<'de> serde::Deserialize<'de> for WorkspaceEdit {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(serde::Deserialize)]
-        #[serde(untagged)]
-        enum WorkspaceEditHelper {
-            String(String),
-            Object(WorkspaceEditInner),
-        }
-
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct WorkspaceEditInner {
-            changes: Option<std::collections::HashMap<String, Vec<TextEdit>>>,
-            document_changes: Option<Vec<serde_json::Value>>,
-            change_annotations: Option<HashMap<String, serde_json::Value>>,
-        }
-
-        let helper = WorkspaceEditHelper::deserialize(deserializer)?;
-        match helper {
-            WorkspaceEditHelper::String(s) => {
-                let inner: WorkspaceEditInner =
-                    serde_json::from_str(&s).map_err(serde::de::Error::custom)?;
-                Ok(WorkspaceEdit {
-                    changes: inner.changes,
-                    document_changes: inner.document_changes,
-                    change_annotations: inner.change_annotations,
-                })
-            }
-            WorkspaceEditHelper::Object(inner) => Ok(WorkspaceEdit {
-                changes: inner.changes,
-                document_changes: inner.document_changes,
-                change_annotations: inner.change_annotations,
-            }),
-        }
-    }
-}
+impl_fromstr_serde_json!(WorkspaceEdit);
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Command {
@@ -541,7 +506,7 @@ pub struct Command {
 ///
 /// A CodeAction must set either `edit` and/or a `command`. If both are supplied,
 /// the `edit` is applied first, then the `command` is executed.
-#[derive(Debug, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
     /// A short, human-readable, title for this code action.
@@ -597,60 +562,7 @@ pub struct CodeAction {
     data: Option<serde_json::Value>,
 }
 
-impl<'de> serde::Deserialize<'de> for CodeAction {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(serde::Deserialize)]
-        #[serde(untagged)]
-        enum CodeActionHelper {
-            String(String),
-            Object(Box<CodeActionInner>),
-        }
-
-        #[derive(serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct CodeActionInner {
-            title: String,
-            kind: Option<CodeActionKind>,
-            diagnostics: Option<Vec<LSPDiagnostic>>,
-            is_preferred: Option<bool>,
-            disabled: Option<Disabled>,
-            edit: Option<WorkspaceEdit>,
-            command: Option<Command>,
-            data: Option<serde_json::Value>,
-        }
-
-        let helper = CodeActionHelper::deserialize(deserializer)?;
-        match helper {
-            CodeActionHelper::String(s) => {
-                let inner: CodeActionInner =
-                    serde_json::from_str(&s).map_err(serde::de::Error::custom)?;
-                Ok(CodeAction {
-                    title: inner.title,
-                    kind: inner.kind,
-                    diagnostics: inner.diagnostics,
-                    is_preferred: inner.is_preferred,
-                    disabled: inner.disabled,
-                    edit: inner.edit,
-                    command: inner.command,
-                    data: inner.data,
-                })
-            }
-            CodeActionHelper::Object(inner) => Ok(CodeAction {
-                title: inner.title,
-                kind: inner.kind,
-                diagnostics: inner.diagnostics,
-                is_preferred: inner.is_preferred,
-                disabled: inner.disabled,
-                edit: inner.edit,
-                command: inner.command,
-                data: inner.data,
-            }),
-        }
-    }
-}
+impl_fromstr_serde_json!(CodeAction);
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1941,6 +1853,12 @@ mod tests {
         assert!(json.contains("true"));
     }
 
+    #[derive(serde::Deserialize)]
+    struct DocumentIdentifierWrapper {
+        #[serde(deserialize_with = "string_or_struct")]
+        pub identifier: DocumentIdentifier,
+    }
+
     #[test]
     fn test_make_text_document_identifier_from_path() {
         // Test with current file (this source file should exist)
@@ -2098,32 +2016,6 @@ mod tests {
     }
 
     #[test]
-    fn test_document_identifier_string_deserializer_via_visitor() {
-        // Test the custom deserializer's visit_str method by passing JSON as a string value
-        // This simulates Claude Code's usage pattern where JSON is embedded as string
-        let json_as_string = r#""{\"buffer_id\": 123}""#;
-        let result: Result<DocumentIdentifier, _> = serde_json::from_str(json_as_string);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), DocumentIdentifier::BufferId(123));
-
-        let json_as_string = r#""{\"project_relative_path\": \"src/lib.rs\"}""#;
-        let result: Result<DocumentIdentifier, _> = serde_json::from_str(json_as_string);
-        assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap(),
-            DocumentIdentifier::ProjectRelativePath(PathBuf::from("src/lib.rs"))
-        );
-
-        let json_as_string = r#""{\"absolute_path\": \"/home/user/file.rs\"}""#;
-        let result: Result<DocumentIdentifier, _> = serde_json::from_str(json_as_string);
-        assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap(),
-            DocumentIdentifier::AbsolutePath(PathBuf::from("/home/user/file.rs"))
-        );
-    }
-
-    #[test]
     fn test_document_identifier_string_deserializer_error_cases() {
         // Test invalid JSON string format
         let invalid_json = r#"{"invalid_field": 42}"#;
@@ -2198,9 +2090,13 @@ mod tests {
             assert_eq!(original, deserialized);
 
             // Test string-embedded JSON deserialization (Claude Code use case)
-            let json_string = serde_json::to_string(&json).unwrap();
-            let from_string: DocumentIdentifier = serde_json::from_str(&json_string).unwrap();
-            assert_eq!(original, from_string);
+            let json_string = serde_json::to_string(&serde_json::json!( {
+                "identifier": json,
+            }))
+            .unwrap();
+            let from_string: DocumentIdentifierWrapper =
+                serde_json::from_str(&json_string).unwrap();
+            assert_eq!(original, from_string.identifier);
         }
     }
 
@@ -2300,6 +2196,12 @@ mod tests {
         assert_eq!(deserialized.failed_change, Some(1));
     }
 
+    #[derive(serde::Deserialize)]
+    struct CodeActionWrapper {
+        #[serde(deserialize_with = "string_or_struct")]
+        pub code_action: CodeAction,
+    }
+
     #[test]
     fn test_code_action_string_deserialization() {
         // Test that CodeAction can deserialize from both object and string formats
@@ -2323,10 +2225,19 @@ mod tests {
         assert_eq!(deserialized_object.kind, Some(CodeActionKind::Quickfix));
 
         // Test string-wrapped deserialization
-        let json_string = format!("\"{}\"", json.replace("\"", "\\\""));
-        let deserialized_string: CodeAction = serde_json::from_str(&json_string).unwrap();
-        assert_eq!(deserialized_string.title, "Fix this issue");
-        assert_eq!(deserialized_string.kind, Some(CodeActionKind::Quickfix));
+        let json_string = serde_json::json!({
+            "code_action": json
+        });
+        let deserialized: CodeActionWrapper = serde_json::from_value(json_string).unwrap();
+        let deserialized = deserialized.code_action;
+        assert_eq!(deserialized.title, "Fix this issue");
+        assert_eq!(deserialized.kind, Some(CodeActionKind::Quickfix));
+    }
+
+    #[derive(serde::Deserialize)]
+    struct WorkspaceEditWrapper {
+        #[serde(deserialize_with = "string_or_struct")]
+        pub workspace_edit: WorkspaceEdit,
     }
 
     #[test]
@@ -2365,8 +2276,11 @@ mod tests {
         assert!(deserialized_object.changes.is_some());
 
         // Test string-wrapped deserialization
-        let json_string = format!("\"{}\"", json.replace("\"", "\\\""));
-        let deserialized_string: WorkspaceEdit = serde_json::from_str(&json_string).unwrap();
-        assert!(deserialized_string.changes.is_some());
+        let json_string = serde_json::json!({
+            "workspace_edit": json
+        });
+        let deserialized: WorkspaceEditWrapper = serde_json::from_value(json_string).unwrap();
+        let deserialized = deserialized.workspace_edit;
+        assert!(deserialized.changes.is_some());
     }
 }
