@@ -79,6 +79,20 @@ pub trait NeovimClientTrait: Sync {
         position: Position,
         include_declaration: bool,
     ) -> Result<Vec<Location>, NeovimError>;
+
+    /// Resolve a code action that may have incomplete data
+    async fn lsp_resolve_code_action(
+        &self,
+        client_name: &str,
+        code_action: CodeAction,
+    ) -> Result<CodeAction, NeovimError>;
+
+    /// Apply a workspace edit using the LSP workspace/applyEdit method
+    async fn lsp_apply_workspace_edit(
+        &self,
+        client_name: &str,
+        workspace_edit: WorkspaceEdit,
+    ) -> Result<ApplyWorkspaceEditResult, NeovimError>;
 }
 
 pub struct NeovimHandler<T> {
@@ -148,7 +162,7 @@ pub struct UserData {
     pub unknowns: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct LSPDiagnostic {
     pub code: Option<String>,
     pub message: String,
@@ -279,7 +293,7 @@ impl DocumentIdentifier {
 
 /// Position in a text document expressed as zero-based line and zero-based character offset.
 /// A position is between two characters like an 'insert' cursor in an editor.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Position {
     /// Line position in a document (zero-based).
     pub line: u64,
@@ -291,7 +305,7 @@ pub struct Position {
     pub character: u64,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Range {
     /// The range's start position.
     pub start: Position,
@@ -306,7 +320,7 @@ pub struct Range {
 ///
 /// The set of kinds is open and client needs to announce the kinds it supports
 /// to the server during initialization.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CodeActionKind {
     /// Empty kind.
@@ -372,7 +386,7 @@ pub enum CodeActionKind {
 /// The reason why code actions were requested.
 ///
 /// @since 3.17.0
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum CodeActionTriggerKind {
     /// Code actions were explicitly requested by the user or by an extension.
     Invoked = 1,
@@ -384,7 +398,7 @@ pub enum CodeActionTriggerKind {
 }
 /// Contains additional diagnostic information about the context in which
 /// a code action is run.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeActionContext {
     /// Requested kind of actions to return.
@@ -417,7 +431,7 @@ pub struct CodeActionParams {
     pub context: CodeActionContext,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Disabled {
     /// Human readable description of why the code action is currently
     /// disabled.
@@ -427,7 +441,7 @@ pub struct Disabled {
 }
 
 /// A textual edit applicable to a text document.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TextEdit {
     /// The range of the text document to be manipulated. To insert
@@ -440,7 +454,7 @@ pub struct TextEdit {
     annotation_id: Option<String>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdit {
     /// Holds changes to existing resources.
@@ -471,7 +485,7 @@ pub struct WorkspaceEdit {
     change_annotations: Option<HashMap<String, serde_json::Value>>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Command {
     /// Title of the command, like `save`.
     title: String,
@@ -487,7 +501,7 @@ pub struct Command {
 ///
 /// A CodeAction must set either `edit` and/or a `command`. If both are supplied,
 /// the `edit` is applied first, then the `command` is executed.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
     /// A short, human-readable, title for this code action.
@@ -839,6 +853,24 @@ pub struct WorkspaceSymbolResult {
     pub result: Option<DocumentSymbolResult>,
     #[serde(flatten)]
     pub unknowns: HashMap<String, serde_json::Value>,
+}
+
+/// Result type for applying workspace edits
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyWorkspaceEditResult {
+    /// Indicates whether the edit was applied or not.
+    pub applied: bool,
+    /// An optional textual description for why the edit was not applied.
+    /// This may be used may be used by the server for diagnostic
+    /// logging or to provide a suitable error for a request that
+    /// triggered the edit.
+    pub failure_reason: Option<String>,
+    /// Depending on the client's failure handling strategy `failedChange`
+    /// might contain the index of the change that failed. This property is
+    /// only available if the client signals a `failureHandlingStrategy`
+    /// in its client capabilities.
+    pub failed_change: Option<u32>,
 }
 
 pub struct NeovimClient<T>
@@ -1342,6 +1374,110 @@ where
             }
         }
     }
+
+    /// Resolve a code action that may have incomplete data
+    pub async fn lsp_resolve_code_action(
+        &self,
+        client_name: &str,
+        code_action: CodeAction,
+    ) -> Result<CodeAction, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_resolve_code_action.lua"),
+                vec![
+                    Value::from(client_name),
+                    Value::from(
+                        serde_json::to_string(&code_action)
+                            .map_err(|e| NeovimError::Api(format!("Failed to serialize code action: {e}")))?,
+                    ),
+                    Value::from(5000), // timeout_ms
+                    Value::from(0),    // bufnr (not needed for this request)
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP code action resolved successfully");
+                #[derive(Debug, serde::Deserialize)]
+                struct Result {
+                    result: CodeAction,
+                }
+                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        debug!("Failed to parse resolve code action result: {}", e);
+                        return Err(NeovimError::Api(format!(
+                            "Failed to parse resolve code action result: {e}"
+                        )));
+                    }
+                };
+                Ok(result.result)
+            }
+            Err(e) => {
+                debug!("Failed to resolve LSP code action: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to resolve LSP code action: {e}"
+                )))
+            }
+        }
+    }
+
+    /// Apply a workspace edit using the LSP workspace/applyEdit method
+    pub async fn lsp_apply_workspace_edit(
+        &self,
+        client_name: &str,
+        workspace_edit: WorkspaceEdit,
+    ) -> Result<ApplyWorkspaceEditResult, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_apply_workspace_edit.lua"),
+                vec![
+                    Value::from(client_name),
+                    Value::from(
+                        serde_json::to_string(&workspace_edit)
+                            .map_err(|e| NeovimError::Api(format!("Failed to serialize workspace edit: {e}")))?,
+                    ),
+                    Value::from(5000), // timeout_ms
+                    Value::from(0),    // bufnr (not needed for this request)
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                debug!("LSP workspace edit applied successfully");
+                #[derive(Debug, serde::Deserialize)]
+                struct Result {
+                    result: ApplyWorkspaceEditResult,
+                }
+                let result: Result = match serde_json::from_str(result.as_str().unwrap()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        debug!("Failed to parse apply workspace edit result: {}", e);
+                        return Err(NeovimError::Api(format!(
+                            "Failed to parse apply workspace edit result: {e}"
+                        )));
+                    }
+                };
+                Ok(result.result)
+            }
+            Err(e) => {
+                debug!("Failed to apply LSP workspace edit: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to apply LSP workspace edit: {e}"
+                )))
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -1579,6 +1715,26 @@ where
         include_declaration: bool,
     ) -> Result<Vec<Location>, NeovimError> {
         self.lsp_references(client_name, document, position, include_declaration)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_resolve_code_action(
+        &self,
+        client_name: &str,
+        code_action: CodeAction,
+    ) -> Result<CodeAction, NeovimError> {
+        self.lsp_resolve_code_action(client_name, code_action)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_apply_workspace_edit(
+        &self,
+        client_name: &str,
+        workspace_edit: WorkspaceEdit,
+    ) -> Result<ApplyWorkspaceEditResult, NeovimError> {
+        self.lsp_apply_workspace_edit(client_name, workspace_edit)
             .await
     }
 }
