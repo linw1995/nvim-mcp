@@ -7,7 +7,9 @@ use rmcp::{
 use tracing::instrument;
 
 use super::core::{NeovimMcpServer, find_get_all_targets};
-use crate::neovim::{DocumentIdentifier, NeovimClient, NeovimClientTrait, Position, Range, CodeAction, WorkspaceEdit};
+use crate::neovim::{
+    CodeAction, DocumentIdentifier, NeovimClient, NeovimClientTrait, Position, Range, WorkspaceEdit,
+};
 
 /// Connect to Neovim instance via unix socket or TCP
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -416,7 +418,9 @@ impl NeovimMcpServer {
         let resolved_action = client
             .lsp_resolve_code_action(&lsp_client_name, code_action)
             .await?;
-        Ok(CallToolResult::success(vec![Content::json(resolved_action)?]))
+        Ok(CallToolResult::success(vec![Content::json(
+            resolved_action,
+        )?]))
     }
 
     #[tool(description = "Apply a workspace edit using the LSP workspace/applyEdit method")]

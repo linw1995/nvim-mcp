@@ -230,7 +230,7 @@ impl<'de> Visitor<'de> for DocumentIdentifierVisitor {
         E: de::Error,
     {
         serde_json::from_str(value)
-            .map_err(|e| de::Error::custom(format!("Failed to parse JSON string: {}", e)))
+            .map_err(|e| de::Error::custom(format!("Failed to parse JSON string: {e}")))
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
@@ -1391,10 +1391,9 @@ where
                 include_str!("lua/lsp_resolve_code_action.lua"),
                 vec![
                     Value::from(client_name),
-                    Value::from(
-                        serde_json::to_string(&code_action)
-                            .map_err(|e| NeovimError::Api(format!("Failed to serialize code action: {e}")))?,
-                    ),
+                    Value::from(serde_json::to_string(&code_action).map_err(|e| {
+                        NeovimError::Api(format!("Failed to serialize code action: {e}"))
+                    })?),
                     Value::from(5000), // timeout_ms
                     Value::from(0),    // bufnr (not needed for this request)
                 ],
@@ -1443,10 +1442,9 @@ where
                 include_str!("lua/lsp_apply_workspace_edit.lua"),
                 vec![
                     Value::from(client_name),
-                    Value::from(
-                        serde_json::to_string(&workspace_edit)
-                            .map_err(|e| NeovimError::Api(format!("Failed to serialize workspace edit: {e}")))?,
-                    ),
+                    Value::from(serde_json::to_string(&workspace_edit).map_err(|e| {
+                        NeovimError::Api(format!("Failed to serialize workspace edit: {e}"))
+                    })?),
                     Value::from(5000), // timeout_ms
                     Value::from(0),    // bufnr (not needed for this request)
                 ],
@@ -1724,8 +1722,7 @@ where
         client_name: &str,
         code_action: CodeAction,
     ) -> Result<CodeAction, NeovimError> {
-        self.lsp_resolve_code_action(client_name, code_action)
-            .await
+        self.lsp_resolve_code_action(client_name, code_action).await
     }
 
     #[instrument(skip(self))]
@@ -2132,7 +2129,7 @@ mod tests {
         let json = serde_json::to_string(&code_action).unwrap();
         assert!(json.contains("Fix this issue"));
         assert!(json.contains("quickfix"));
-        
+
         // Test round-trip
         let deserialized: CodeAction = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.title, "Fix this issue");
@@ -2146,8 +2143,14 @@ mod tests {
             "file:///test.rs".to_string(),
             vec![TextEdit {
                 range: Range {
-                    start: Position { line: 0, character: 0 },
-                    end: Position { line: 0, character: 5 },
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 5,
+                    },
                 },
                 new_text: "hello".to_string(),
                 annotation_id: None,
@@ -2163,7 +2166,7 @@ mod tests {
         let json = serde_json::to_string(&workspace_edit).unwrap();
         assert!(json.contains("file:///test.rs"));
         assert!(json.contains("hello"));
-        
+
         // Test round-trip
         let deserialized: WorkspaceEdit = serde_json::from_str(&json).unwrap();
         assert!(deserialized.changes.is_some());
@@ -2179,7 +2182,7 @@ mod tests {
 
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"applied\":true"));
-        
+
         // Test with failure
         let failed_result = ApplyWorkspaceEditResult {
             applied: false,
@@ -2191,11 +2194,14 @@ mod tests {
         assert!(json.contains("\"applied\":false"));
         assert!(json.contains("Permission denied"));
         assert!(json.contains("\"failedChange\":1"));
-        
+
         // Test round-trip
         let deserialized: ApplyWorkspaceEditResult = serde_json::from_str(&json).unwrap();
         assert!(!deserialized.applied);
-        assert_eq!(deserialized.failure_reason, Some("Permission denied".to_string()));
+        assert_eq!(
+            deserialized.failure_reason,
+            Some("Permission denied".to_string())
+        );
         assert_eq!(deserialized.failed_change, Some(1));
     }
 }

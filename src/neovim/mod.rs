@@ -5,5 +5,7 @@ mod error;
 #[cfg(test)]
 pub mod integration_tests;
 
-pub use client::{DocumentIdentifier, NeovimClient, NeovimClientTrait, Position, Range, CodeAction, WorkspaceEdit};
+pub use client::{
+    CodeAction, DocumentIdentifier, NeovimClient, NeovimClientTrait, Position, Range, WorkspaceEdit,
+};
 pub use error::NeovimError;

@@ -14,7 +14,7 @@ end
 
 local workspace_edit = vim.json.decode(workspace_edit_raw)
 local apply_edit_params = {
-    edit = workspace_edit
+    edit = workspace_edit,
 }
 local result, err = client:request_sync("workspace/applyEdit", apply_edit_params, timeout_ms, bufnr)
 if err then
