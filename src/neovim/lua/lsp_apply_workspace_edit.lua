@@ -1,5 +1,5 @@
 local clients = vim.lsp.get_clients()
-local client_name, workspace_edit_raw, timeout_ms, bufnr = unpack({ ... })
+local client_name, workspace_edit_raw = unpack({ ... })
 local client
 for _, v in ipairs(clients) do
     if v.name == client_name then
@@ -13,18 +13,8 @@ if client == nil then
 end
 
 local workspace_edit = vim.json.decode(workspace_edit_raw)
-local apply_edit_params = {
-    edit = workspace_edit,
-}
-local result, err = client:request_sync("workspace/applyEdit", apply_edit_params, timeout_ms, bufnr)
-if err then
-    return vim.json.encode({
-        err_msg = string.format(
-            "LSP client %s request_sync error: %s",
-            vim.json.encode(client_name),
-            vim.json.encode(err)
-        ),
-    })
-end
-
-return vim.json.encode(result)
+local position_encoding = client.offset_encoding or "utf-16"
+vim.lsp.util.apply_workspace_edit(workspace_edit, position_encoding)
+return vim.json.encode({
+    result = vim.NIL,
+})

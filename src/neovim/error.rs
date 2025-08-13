@@ -4,6 +4,8 @@ pub enum NeovimError {
     Connection(String),
     #[error("API error: {0}")]
     Api(String),
+    #[error("LSP error: {code} {message}")]
+    Lsp { message: String, code: i32 },
 }
 
 impl From<std::io::Error> for NeovimError {

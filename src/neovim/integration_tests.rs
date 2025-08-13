@@ -1,11 +1,13 @@
+use std::fs;
 use std::time::Duration;
 
+use tempfile::TempDir;
 use tokio::time::sleep;
 use tracing::info;
 use tracing_test::traced_test;
 
 use crate::neovim::client::{DocumentIdentifier, Position, Range};
-use crate::neovim::{NeovimClient, NeovimClientTrait, WorkspaceEdit};
+use crate::neovim::{NeovimClient, NeovimClientTrait};
 use crate::test_utils::*;
 
 #[tokio::test]
@@ -264,14 +266,20 @@ async fn test_code_action() {
 #[traced_test]
 #[cfg(any(unix, windows))]
 async fn test_lsp_resolve_code_action() {
-    let ipc_path = generate_random_ipc_path();
+    // Create a temporary directory and file
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let temp_file_path = temp_dir.path().join("test_resolve.go");
 
+    // Create a Go file with fmt.Println call that can be inlined
+    let go_content = include_str!("testdata/main.go");
+
+    fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
+
+    let ipc_path = generate_random_ipc_path();
     let child = setup_neovim_instance_ipc_advance(
         &ipc_path,
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
-        get_testdata_path("diagnostic_problems.lua")
-            .to_str()
-            .unwrap(),
+        temp_file_path.to_str().unwrap(),
     )
     .await;
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
@@ -290,15 +298,136 @@ async fn test_lsp_resolve_code_action() {
 
     sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
 
+    // Position cursor inside fmt.Println call (line 6, character 6)
+    let result = client
+        .lsp_get_code_actions(
+            "gopls",
+            DocumentIdentifier::from_buffer_id(0),
+            Range {
+                start: Position {
+                    line: 6,      // Inside fmt.Println call
+                    character: 6, // After fmt.P
+                },
+                end: Position {
+                    line: 6,
+                    character: 6,
+                },
+            },
+        )
+        .await;
+    assert!(result.is_ok(), "Failed to get code actions: {result:?}");
+    let code_actions = result.unwrap();
+    info!("Code actions: {:?}", code_actions);
+
+    // Find the "Inline call to Println" action which requires resolution
+    let inline_action = code_actions
+        .iter()
+        .find(|action| action.title().contains("Inline call to Println"));
+
+    if let Some(action) = inline_action {
+        info!("Found inline action: {:?}", action.title());
+
+        // Verify this action needs resolution (no edit, has data)
+        assert!(
+            action.edit().is_none(),
+            "Action should not have edit before resolution"
+        );
+
+        // Test resolving the code action
+        let code_action_json = serde_json::to_string(action).unwrap();
+        let code_action_copy: crate::neovim::CodeAction =
+            serde_json::from_str(&code_action_json).unwrap();
+
+        let result = client
+            .lsp_resolve_code_action("gopls", code_action_copy)
+            .await;
+        assert!(result.is_ok(), "Failed to resolve code action: {result:?}");
+        let resolved_action = result.unwrap();
+        info!("Resolved code action: {:?}", resolved_action);
+
+        // Verify the action was properly resolved
+        assert!(
+            resolved_action.edit().is_some(),
+            "Resolved action should have edit field populated"
+        );
+
+        let resolved_edit = resolved_action.edit().unwrap();
+        let edit_json = serde_json::to_string(resolved_edit).unwrap();
+        info!("Resolved workspace edit: {}", edit_json);
+
+        // Verify the edit contains expected transformations for inlining fmt.Println
+        assert!(
+            edit_json.contains("Fp"),
+            "Resolved edit should contain Fp (Printf) transformation"
+        );
+        assert!(
+            edit_json.contains("os.Stdout"),
+            "Resolved edit should contain os.Stdout parameter"
+        );
+        assert!(
+            edit_json.contains("\\t\\\"os\\\""),
+            "Resolved edit should add os import"
+        );
+
+        info!("✅ Code action resolution validated successfully!");
+    } else {
+        // List available actions for debugging
+        info!("Inline action not found, available actions:");
+        for (i, action) in code_actions.iter().enumerate() {
+            info!("  Action {}: {}", i, action.title());
+        }
+        panic!("Expected 'Inline call to Println' action not found");
+    }
+
+    // Temp directory and file automatically cleaned up when temp_dir is dropped
+}
+
+#[tokio::test]
+#[traced_test]
+#[cfg(any(unix, windows))]
+async fn test_lsp_apply_workspace_edit() {
+    // Create a temporary directory and file
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let temp_file_path = temp_dir.path().join("test_main.go");
+
+    // Create a Go file with code that gopls will want to modernize
+    let go_content = include_str!("testdata/main.go");
+    fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
+
+    let ipc_path = generate_random_ipc_path();
+    let child = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        temp_file_path.to_str().unwrap(),
+    )
+    .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
+    let mut client = NeovimClient::new();
+
+    // Connect to instance
+    let result = client.connect_path(&ipc_path).await;
+    assert!(result.is_ok(), "Failed to connect to instance");
+
+    // Set up diagnostics and wait for LSP
+    let result = client.setup_diagnostics_changed_autocmd().await;
+    assert!(
+        result.is_ok(),
+        "Failed to setup diagnostics autocmd: {result:?}"
+    );
+
+    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+
+    // Get buffer diagnostics to find modernization opportunities
     let result = client.get_buffer_diagnostics(0).await;
     assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
     let diagnostics = result.unwrap();
     info!("Diagnostics: {:?}", diagnostics);
 
     if let Some(diagnostic) = diagnostics.first() {
+        // Get code actions for the diagnostic range
         let result = client
             .lsp_get_code_actions(
-                "luals",
+                "gopls",
                 DocumentIdentifier::from_buffer_id(0),
                 Range {
                     start: Position {
@@ -316,82 +445,64 @@ async fn test_lsp_resolve_code_action() {
         let code_actions = result.unwrap();
         info!("Code actions: {:?}", code_actions);
 
-        if let Some(code_action) = code_actions.first() {
-            // Test resolving the code action
-            // We need to create a copy since CodeAction doesn't implement Clone
-            let code_action_json = serde_json::to_string(code_action).unwrap();
-            let code_action_copy: crate::neovim::CodeAction =
-                serde_json::from_str(&code_action_json).unwrap();
+        // Find the "Replace for loop with range" action that has a workspace edit
+        let modernize_action = code_actions.iter().find(|action| {
+            action.title().contains("Replace for loop with range") && action.has_edit()
+        });
 
+        if let Some(action) = modernize_action {
+            info!("Found modernize action: {:?}", action.title());
+
+            // Extract the workspace edit from the code action
+            let workspace_edit = action.edit().unwrap().clone();
+            info!("Workspace edit to apply: {:?}", workspace_edit);
+
+            // Read original content
+            let original_content =
+                fs::read_to_string(&temp_file_path).expect("Failed to read original file");
+            info!("Original content:\n{}", original_content);
+
+            // Apply the workspace edit using the client
             let result = client
-                .lsp_resolve_code_action("luals", code_action_copy)
+                .lsp_apply_workspace_edit("gopls", workspace_edit)
                 .await;
-            assert!(result.is_ok(), "Failed to resolve code action: {result:?}");
-            let resolved_action = result.unwrap();
-            info!("Resolved code action: {:?}", resolved_action);
+            assert!(result.is_ok(), "Failed to apply workspace edit: {result:?}");
 
-            // Just verify that we got a resolved action back
-            // We can't easily compare fields since they're private
+            // Save the buffer to persist changes to disk
+            let result = client.execute_lua("vim.cmd('write')").await;
+            assert!(result.is_ok(), "Failed to save buffer: {result:?}");
+
+            // Give some time for the edit and save to be applied
+            sleep(Duration::from_millis(1000)).await;
+
+            // Read the modified content to verify the change
+            let modified_content =
+                fs::read_to_string(&temp_file_path).expect("Failed to read modified file");
+            info!("Modified content:\n{}", modified_content);
+
+            // Verify that the for loop was modernized
             assert!(
-                serde_json::to_string(&resolved_action).is_ok(),
-                "Resolved action should be serializable"
+                modified_content.contains("for i := range 10"),
+                "Expected modernized for loop with 'range 10', got: {}",
+                modified_content
             );
+            assert!(
+                !modified_content.contains("for i := 0; i < 10; i++"),
+                "Original for loop should be replaced, but still found in: {}",
+                modified_content
+            );
+
+            info!("✅ Workspace edit successfully applied and verified!");
+        } else {
+            info!("No modernize action with workspace edit found, available actions:");
+            for action in &code_actions {
+                info!("  - {}: edit={}", action.title(), action.has_edit());
+            }
+            panic!("Expected 'Replace for loop with range' action with workspace edit not found");
         }
+    } else {
+        info!("No diagnostics found for modernization");
     }
 
-    // Guard automatically cleans up when it goes out of scope
-}
-
-#[tokio::test]
-#[traced_test]
-#[cfg(any(unix, windows))]
-async fn test_lsp_apply_workspace_edit() {
-    let ipc_path = generate_random_ipc_path();
-
-    let child = setup_neovim_instance_ipc_advance(
-        &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
-        get_testdata_path("diagnostic_problems.lua")
-            .to_str()
-            .unwrap(),
-    )
-    .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
-
-    // Create a simple workspace edit for testing
-    let workspace_edit: WorkspaceEdit = serde_json::from_str(
-        r#"{
-            "changes": {}
-        }"#,
-    )
-    .expect("Failed to create test workspace edit");
-
-    // Test applying the workspace edit
-    let result = client
-        .lsp_apply_workspace_edit("luals", workspace_edit)
-        .await;
-    assert!(result.is_ok(), "Failed to apply workspace edit: {result:?}");
-    let apply_result = result.unwrap();
-    info!("Apply workspace edit result: {:?}", apply_result);
-
-    // The result should have a valid structure
-    // Even if the edit is empty, it should be processed and return a valid result
-    // We can't predict if it will be applied or not, but we can verify the structure
-    let _ = apply_result.applied; // This ensures the field exists and is accessible
-
-    // Guard automatically cleans up when it goes out of scope
+    // Temp directory and file automatically cleaned up when temp_dir is dropped
 }

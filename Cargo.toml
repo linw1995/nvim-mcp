@@ -49,3 +49,4 @@ blake3 = "1.5"
 [dev-dependencies]
 tracing-test = "0.2"
 rand = "0.9.2"
+tempfile = "3.0"

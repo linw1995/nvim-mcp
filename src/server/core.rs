@@ -11,6 +11,9 @@ impl From<NeovimError> for McpError {
     fn from(err: NeovimError) -> Self {
         match err {
             NeovimError::Connection(msg) => McpError::invalid_request(msg, None),
+            NeovimError::Lsp { code, message } => {
+                McpError::invalid_request(format!("LSP Error: {code}, {message}"), None)
+            }
             NeovimError::Api(msg) => McpError::internal_error(msg, None),
         }
     }

@@ -61,7 +61,7 @@ pub struct CodeActionsParams {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
-    // Supports both string and struct deserialization for DocumentIdentifier.
+    // Supports both string and struct deserialization.
     // Compatible with Claude Code when using subscription.
     #[serde(deserialize_with = "string_or_struct")]
     pub document: DocumentIdentifier,
@@ -83,6 +83,9 @@ pub struct HoverParam {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
@@ -98,6 +101,9 @@ pub struct DocumentSymbolsParams {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
@@ -109,6 +115,9 @@ pub struct ReferencesParams {
     /// Unique identifier for the target Neovim instance
     pub connection_id: String,
     /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
@@ -128,7 +137,7 @@ pub struct ResolveCodeActionParams {
     /// Lsp client name
     pub lsp_client_name: String,
     /// Code action to resolve
-    // Supports both string and struct deserialization for DocumentIdentifier.
+    // Supports both string and struct deserialization.
     // Compatible with Claude Code when using subscription.
     #[serde(deserialize_with = "string_or_struct")]
     pub code_action: CodeAction,
@@ -142,7 +151,7 @@ pub struct ApplyWorkspaceEditParams {
     /// Lsp client name
     pub lsp_client_name: String,
     /// Workspace edit to apply
-    // Supports both string and struct deserialization for DocumentIdentifier.
+    // Supports both string and struct deserialization.
     // Compatible with Claude Code when using subscription.
     #[serde(deserialize_with = "string_or_struct")]
     pub workspace_edit: WorkspaceEdit,
@@ -444,10 +453,10 @@ impl NeovimMcpServer {
         }): Parameters<ApplyWorkspaceEditParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let result = client
+        client
             .lsp_apply_workspace_edit(&lsp_client_name, workspace_edit)
             .await?;
-        Ok(CallToolResult::success(vec![Content::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::text("success")]))
     }
 }
 

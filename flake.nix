@@ -57,6 +57,8 @@
               # Integration tests
               neovim-unwrapped
               lua-language-server
+              go
+              gopls
             ];
           };
         };
