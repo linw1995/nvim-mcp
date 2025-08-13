@@ -8,7 +8,7 @@ jobs:
   build-binary:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: nixbuild/nix-quick-install-action@v30
         with:
@@ -37,7 +37,7 @@ jobs:
       - build-binary
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: nixbuild/nix-quick-install-action@v30
         with:
