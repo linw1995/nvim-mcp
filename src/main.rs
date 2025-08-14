@@ -1,13 +1,35 @@
 use clap::Parser;
 use rmcp::{ServiceExt, transport::stdio};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::OnceLock};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 use nvim_mcp::NeovimMcpServer;
 
+static LONG_VERSION: OnceLock<String> = OnceLock::new();
+
+fn long_version() -> &'static str {
+    LONG_VERSION
+        .get_or_init(|| {
+            // This closure is executed only once, on the first call to get_or_init
+            let dirty = if env!("GIT_DIRTY") == "true" {
+                "[dirty]"
+            } else {
+                ""
+            };
+            format!(
+                "{} (sha:{:?}, build_time:{:?}){}",
+                env!("CARGO_PKG_VERSION"),
+                env!("GIT_COMMIT_SHA"),
+                env!("BUILT_TIME_UTC"),
+                dirty
+            )
+        })
+        .as_str()
+}
+
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(version, long_version=long_version(), about, long_about = None)]
 struct Cli {
     /// Path to the log file. If not specified, logs to stderr
     #[arg(long)]

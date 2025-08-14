@@ -34,6 +34,17 @@
           ];
         };
         lib = pkgs.lib;
+        git_dirty =
+          if (self.sourceInfo ? rev)
+          then "false"
+          else "true";
+        git_commit_sha =
+          self.sourceInfo.rev or (
+            if (self.sourceInfo ? dirtyRev)
+            then lib.strings.removeSuffix "-dirty" self.sourceInfo.dirtyRev
+            else "unknown"
+          );
+        git_last_modified = toString self.sourceInfo.lastModified or "unknown";
       in {
         devShells = {
           default = pkgs.mkShell {
@@ -46,9 +57,6 @@
                 "rustfmt"
               ])
             ];
-            buildInputs = with pkgs; [
-              libiconv
-            ];
             packages = with pkgs; [
               # Development
               rust-analyzer-nightly
@@ -60,6 +68,9 @@
               go
               gopls
             ];
+            shellHook = ''
+              unset SOURCE_DATE_EPOCH
+            '';
           };
         };
         packages = rec {
@@ -81,6 +92,11 @@
                 mainProgram = name;
               };
               src = ./.;
+              env = {
+                GIT_COMMIT_SHA = git_commit_sha;
+                GIT_DIRTY = git_dirty;
+                SOURCE_DATE_EPOCH = git_last_modified;
+              };
               cargoLock = {lockFile = ./Cargo.lock;};
               checkFlags = [
                 "--skip=integration_tests"
