@@ -27,10 +27,10 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
 
     // Also watch the current branch ref file for new commits
-    if let Ok(head_content) = std::fs::read_to_string(".git/HEAD") {
-        if let Some(branch_ref) = head_content.strip_prefix("ref: ").map(|s| s.trim()) {
-            println!("cargo:rerun-if-changed=.git/{}", branch_ref);
-        }
+    if let Ok(head_content) = std::fs::read_to_string(".git/HEAD")
+        && let Some(branch_ref) = head_content.strip_prefix("ref: ").map(|s| s.trim())
+    {
+        println!("cargo:rerun-if-changed=.git/{}", branch_ref);
     }
     // Also rerun if env vars change
     println!("cargo:rerun-if-env-changed=GIT_COMMIT_SHA");
