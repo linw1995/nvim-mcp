@@ -69,6 +69,8 @@
               gopls
             ];
             shellHook = ''
+              # Unset SOURCE_DATE_EPOCH to prevent reproducible build timestamps during development.
+              # This allows timestamps to reflect the current time, which is useful for development workflows.
               unset SOURCE_DATE_EPOCH
             '';
           };
