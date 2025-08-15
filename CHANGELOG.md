@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **LSP Definition and Type Definition Support**: Added `lsp_definition` and
+  `lsp_type_definition` tools for comprehensive symbol navigation with universal
+  document identification
+
+### New Tools (2 additional, 17 total)
+
+**Enhanced LSP Integration:**
+
+- `lsp_definition` - Get LSP definition with universal document identification
+  (buffer IDs, project paths, absolute paths)
+- `lsp_type_definition` - Get LSP type definition with universal document
+  identification (buffer IDs, project paths, absolute paths)
+
 ## [v0.2.0] - 2025-08-14
 
 ### New Features
