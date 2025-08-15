@@ -3,15 +3,13 @@ use rmcp::{
     ErrorData as McpError, ServerHandler,
     model::*,
     service::{RequestContext, RoleServer},
-    tool_handler,
 };
 use serde_json::json;
 use tracing::{debug, instrument};
 
 use super::core::NeovimMcpServer;
 
-// tool_handler macro automatically generates the necessary boilerplate
-#[tool_handler]
+// Manual ServerHandler implementation to override tool methods
 impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
     fn get_info(&self) -> ServerInfo {
@@ -171,5 +169,47 @@ impl ServerHandler for NeovimMcpServer {
                 Some(json!({"uri": uri})),
             )),
         }
+    }
+
+    // Override list_tools to use HybridToolRouter
+    #[instrument(skip(self))]
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        debug!("Listing tools (static + dynamic) via HybridToolRouter");
+
+        // Get tools from HybridToolRouter instead of static router
+        let tools = self.hybrid_router.list_all_tools();
+
+        Ok(ListToolsResult {
+            tools,
+            next_cursor: None,
+        })
+    }
+
+    // Override call_tool to use HybridToolRouter
+    #[instrument(skip(self))]
+    async fn call_tool(
+        &self,
+        CallToolRequestParam { name, arguments }: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("Calling tool: {} via HybridToolRouter", name);
+
+        // Convert arguments to serde_json::Value
+        let args = arguments.unwrap_or_default();
+        let args_value = serde_json::to_value(args).map_err(|e| {
+            McpError::invalid_params(
+                "Failed to serialize arguments",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+
+        // Use HybridToolRouter for dispatch
+        self.hybrid_router
+            .call_tool(self, &name, args_value, context)
+            .await
     }
 }
