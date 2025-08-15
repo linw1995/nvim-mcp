@@ -6,14 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **LSP Implementation Support**: Added `lsp_implementations` tool for finding
+  interface/abstract class implementations with universal document identification
 - **LSP Definition and Type Definition Support**: Added `lsp_definition` and
   `lsp_type_definition` tools for comprehensive symbol navigation with universal
   document identification
 
-### New Tools (2 additional, 17 total)
+### New Tools (3 additional, 18 total)
 
 **Enhanced LSP Integration:**
 
+- `lsp_implementations` - Get LSP implementations with universal document
+  identification (buffer IDs, project paths, absolute paths)
 - `lsp_definition` - Get LSP definition with universal document identification
   (buffer IDs, project paths, absolute paths)
 - `lsp_type_definition` - Get LSP type definition with universal document

@@ -161,7 +161,7 @@ This modular architecture provides several advantages:
 
 ### Available MCP Tools
 
-The server provides these 17 tools (implemented with `#[tool]` attribute):
+The server provides these 18 tools (implemented with `#[tool]` attribute):
 
 **Connection Management:**
 
@@ -193,6 +193,7 @@ The server provides these 17 tools (implemented with `#[tool]` attribute):
     functions
 12. **`lsp_definition`**: Get LSP definition with universal document identification
 13. **`lsp_type_definition`**: Get LSP type definition with universal document identification
+14. **`lsp_implementations`**: Get LSP implementations with universal document identification
 
 ### Universal Document Identifier System
 
@@ -211,7 +212,7 @@ This system enables LSP operations on files that may not be open in Neovim
 buffers, providing
 enhanced flexibility for code analysis and navigation. The universal LSP tools
 (`lsp_code_actions`, `lsp_hover`, `lsp_document_symbols`, `lsp_references`,
-`lsp_definition`, `lsp_type_definition`) accept any of these
+`lsp_definition`, `lsp_type_definition`, `lsp_implementations`) accept any of these
 document identifier types.
 
 ### MCP Resources

@@ -819,7 +819,7 @@ func main() {
     assert!(result.is_ok(), "Failed to get implementation: {result:?}");
     let implementation_result = result.unwrap();
     info!("Implementation result found: {:?}", implementation_result);
-    
+
     // Implementation results might be empty for interface methods without implementations,
     // or contain the concrete implementations
     if let Some(implementation_result) = implementation_result {
