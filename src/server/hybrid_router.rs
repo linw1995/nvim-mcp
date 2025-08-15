@@ -5,8 +5,8 @@ use dashmap::DashMap;
 use futures::future::BoxFuture;
 use rmcp::{
     ErrorData as McpError,
-    handler::server::router::tool::ToolRouter,
-    model::{CallToolResult, Tool, ToolAnnotations},
+    handler::server::{router::tool::ToolRouter, tool::ToolCallContext},
+    model::{CallToolRequestParam, CallToolResult, Tool, ToolAnnotations},
     service::{RequestContext, RoleServer},
 };
 use tracing::{debug, instrument};
@@ -236,115 +236,18 @@ impl HybridToolRouter {
         // 3. Fallback to static tools
         debug!("Falling back to static tool: {}", tool_name);
 
-        // For static tools, we need to delegate to the actual tool methods
-        // Since the #[tool_router] macro generates these methods on NeovimMcpServer,
-        // we need to call them directly through the server instance
-        match tool_name {
-            "get_targets" => server.get_targets().await,
-            "connect" => {
-                // Extract target from arguments
-                let target = arguments
-                    .get("target")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_params("Missing 'target' parameter", None))?;
-
-                use crate::server::tools::ConnectNvimRequest;
-                use rmcp::handler::server::tool::Parameters;
-                server
-                    .connect(Parameters(ConnectNvimRequest {
-                        target: target.to_string(),
-                    }))
-                    .await
-            }
-            "connect_tcp" => {
-                let target = arguments
-                    .get("target")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_params("Missing 'target' parameter", None))?;
-
-                use crate::server::tools::ConnectNvimRequest;
-                use rmcp::handler::server::tool::Parameters;
-                server
-                    .connect_tcp(Parameters(ConnectNvimRequest {
-                        target: target.to_string(),
-                    }))
-                    .await
-            }
-            "disconnect" => {
-                let connection_id = arguments
-                    .get("connection_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::invalid_params("Missing 'connection_id' parameter", None)
-                    })?;
-
-                use crate::server::tools::ConnectionRequest;
-                use rmcp::handler::server::tool::Parameters;
-                server
-                    .disconnect(Parameters(ConnectionRequest {
-                        connection_id: connection_id.to_string(),
-                    }))
-                    .await
-            }
-            "list_buffers" => {
-                let connection_id = arguments
-                    .get("connection_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::invalid_params("Missing 'connection_id' parameter", None)
-                    })?;
-
-                use crate::server::tools::ConnectionRequest;
-                use rmcp::handler::server::tool::Parameters;
-                server
-                    .list_buffers(Parameters(ConnectionRequest {
-                        connection_id: connection_id.to_string(),
-                    }))
-                    .await
-            }
-            "exec_lua" => {
-                let connection_id = arguments
-                    .get("connection_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::invalid_params("Missing 'connection_id' parameter", None)
-                    })?;
-                let code = arguments
-                    .get("code")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::invalid_params("Missing 'code' parameter", None))?;
-
-                use crate::server::tools::ExecuteLuaRequest;
-                use rmcp::handler::server::tool::Parameters;
-                server
-                    .exec_lua(Parameters(ExecuteLuaRequest {
-                        connection_id: connection_id.to_string(),
-                        code: code.to_string(),
-                    }))
-                    .await
-            }
-            "lsp_clients" => {
-                let connection_id = arguments
-                    .get("connection_id")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        McpError::invalid_params("Missing 'connection_id' parameter", None)
-                    })?;
-
-                use crate::server::tools::ConnectionRequest;
-                use rmcp::handler::server::tool::Parameters;
-                server
-                    .lsp_clients(Parameters(ConnectionRequest {
-                        connection_id: connection_id.to_string(),
-                    }))
-                    .await
-            }
-            // Add more static tool handlers as needed
-            _ => Err(McpError::invalid_request(
-                format!("Tool '{}' not found", tool_name),
-                None,
-            )),
-        }
+        // Create ToolCallContext and delegate to static router
+        let request_param = CallToolRequestParam {
+            name: tool_name.to_string().into(),
+            arguments: Some(
+                arguments
+                    .as_object()
+                    .unwrap_or(&serde_json::Map::new())
+                    .clone(),
+            ),
+        };
+        let tool_context = ToolCallContext::new(server, request_param, _context);
+        self.static_router.call(tool_context).await
     }
 
     /// Parse connection-scoped tool names like "f303ec5_treesitter_query"
