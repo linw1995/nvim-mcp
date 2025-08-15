@@ -582,12 +582,12 @@ func main() {
 
     // Extract the first location from the definition result
     let first_location = match &definition_result {
-        crate::neovim::client::DefinitionResult::Single(loc) => loc,
-        crate::neovim::client::DefinitionResult::Locations(locs) => {
+        crate::neovim::client::LocateResult::Single(loc) => loc,
+        crate::neovim::client::LocateResult::Locations(locs) => {
             assert!(!locs.is_empty(), "No definitions found");
             &locs[0]
         }
-        crate::neovim::client::DefinitionResult::LocationLinks(links) => {
+        crate::neovim::client::LocateResult::LocationLinks(links) => {
             assert!(!links.is_empty(), "No definitions found");
             // For LocationLinks, we create a Location from the target info
             let link = &links[0];
@@ -701,12 +701,12 @@ func main() {
 
     // Extract the first location from the type definition result
     let first_location = match &type_definition_result {
-        crate::neovim::client::DefinitionResult::Single(loc) => loc,
-        crate::neovim::client::DefinitionResult::Locations(locs) => {
+        crate::neovim::client::LocateResult::Single(loc) => loc,
+        crate::neovim::client::LocateResult::Locations(locs) => {
             assert!(!locs.is_empty(), "No type definitions found");
             &locs[0]
         }
-        crate::neovim::client::DefinitionResult::LocationLinks(links) => {
+        crate::neovim::client::LocateResult::LocationLinks(links) => {
             assert!(!links.is_empty(), "No type definitions found");
             // For LocationLinks, we create a Location from the target info
             let link = &links[0];
@@ -823,12 +823,12 @@ func main() {
     if let Some(implementation_result) = implementation_result {
         // Extract the first location from the implementation result
         let first_location = match &implementation_result {
-            crate::neovim::client::DefinitionResult::Single(loc) => loc,
-            crate::neovim::client::DefinitionResult::Locations(locs) => {
+            crate::neovim::client::LocateResult::Single(loc) => loc,
+            crate::neovim::client::LocateResult::Locations(locs) => {
                 assert!(!locs.is_empty(), "No implementations found");
                 &locs[0]
             }
-            crate::neovim::client::DefinitionResult::LocationLinks(links) => {
+            crate::neovim::client::LocateResult::LocationLinks(links) => {
                 assert!(!links.is_empty(), "No implementations found");
                 // For LocationLinks, we create a Location from the target info
                 let link = &links[0];
