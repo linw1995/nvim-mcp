@@ -741,3 +741,126 @@ func main() {
 
     // Temp directory and file automatically cleaned up when temp_dir is dropped
 }
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_implementation() {
+    // Create a temporary directory and file
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let temp_file_path = temp_dir.path().join("test_implementation.go");
+
+    // Create a Go file with an interface and its implementation
+    let go_content = r#"package main
+
+import "fmt"
+
+type Greeter interface {
+    Greet(name string) string
+}
+
+type Person struct {
+    Title string
+}
+
+func (p Person) Greet(name string) string {
+    return fmt.Sprintf("Hello %s, I'm %s", name, p.Title)
+}
+
+func main() {
+    var g Greeter = Person{Title: "Developer"}
+    fmt.Println(g.Greet("World"))
+}
+"#;
+
+    fs::write(&temp_file_path, go_content).expect("Failed to write Go file");
+
+    // Setup Neovim with gopls
+    let ipc_path = generate_random_ipc_path();
+    let child = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        temp_file_path.to_str().unwrap(),
+    )
+    .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
+    let mut client = NeovimClient::new();
+
+    // Connect to instance
+    let result = client.connect_path(&ipc_path).await;
+    assert!(result.is_ok(), "Failed to connect to instance");
+
+    // Set up diagnostics and wait for LSP
+    let result = client.setup_diagnostics_changed_autocmd().await;
+    assert!(
+        result.is_ok(),
+        "Failed to setup diagnostics autocmd: {result:?}"
+    );
+
+    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+
+    // Get LSP clients
+    let lsp_clients = client.lsp_get_clients().await.unwrap();
+    info!("LSP clients: {:?}", lsp_clients);
+    assert!(!lsp_clients.is_empty(), "No LSP clients found");
+
+    // Test implementation lookup for "Greet" method in Greeter interface at line 5 (0-indexed)
+    // Position cursor on "Greet" method declaration
+    let result = client
+        .lsp_implementation(
+            "gopls",
+            DocumentIdentifier::from_buffer_id(1), // First opened file
+            Position {
+                line: 5,      // Line with Greet method declaration
+                character: 4, // Position on "Greet"
+            },
+        )
+        .await;
+
+    assert!(result.is_ok(), "Failed to get implementation: {result:?}");
+    let implementation_result = result.unwrap();
+    info!("Implementation result found: {:?}", implementation_result);
+    
+    // Implementation results might be empty for interface methods without implementations,
+    // or contain the concrete implementations
+    if let Some(implementation_result) = implementation_result {
+        // Extract the first location from the implementation result
+        let first_location = match &implementation_result {
+            crate::neovim::client::DefinitionResult::Single(loc) => loc,
+            crate::neovim::client::DefinitionResult::Locations(locs) => {
+                assert!(!locs.is_empty(), "No implementations found");
+                &locs[0]
+            }
+            crate::neovim::client::DefinitionResult::LocationLinks(links) => {
+                assert!(!links.is_empty(), "No implementations found");
+                // For LocationLinks, we create a Location from the target info
+                let link = &links[0];
+                assert!(
+                    link.target_uri.contains("test_implementation.go"),
+                    "Implementation should point to the same file"
+                );
+                // The implementation should point to line 12 (0-indexed) where the method is implemented
+                assert_eq!(
+                    link.target_range.start.line, 12,
+                    "Implementation should point to line 12 where Greet method is implemented"
+                );
+                return; // Early return for LocationLinks case
+            }
+        };
+
+        // For Location cases
+        assert!(
+            first_location.uri.contains("test_implementation.go"),
+            "Implementation should point to the same file"
+        );
+
+        // The implementation should point to line 12 (0-indexed) where the method is implemented
+        assert_eq!(
+            first_location.range.start.line, 12,
+            "Implementation should point to line 12 where Greet method is implemented"
+        );
+    }
+
+    info!("✅ LSP implementation lookup successful!");
+
+    // Temp directory and file automatically cleaned up when temp_dir is dropped
+}
