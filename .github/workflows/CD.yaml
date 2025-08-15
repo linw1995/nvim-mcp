@@ -20,7 +20,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 20G
+          gc-max-store-size-linux: 15G
 
       - name: Setup nix develop env
         run: |
@@ -49,7 +49,7 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 20G
+          gc-max-store-size-linux: 15G
 
       - name: Setup nix develop env
         run: |
