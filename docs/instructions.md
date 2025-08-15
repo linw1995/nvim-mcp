@@ -192,8 +192,8 @@ by supporting multiple ways of referencing documents:
 This system enables LSP operations on files that may not be open in Neovim buffers,
 providing enhanced flexibility for code analysis and navigation. The universal LSP
 tools (`lsp_code_actions`, `lsp_hover`, `lsp_document_symbols`,
-`lsp_references`, `lsp_definition`, `lsp_type_definition`, `lsp_implementations`) accept
-any of these document identifier types.
+`lsp_references`, `lsp_definition`, `lsp_type_definition`, 
+`lsp_implementations`) accept any of these document identifier types.
 
 ### MCP Resources
 

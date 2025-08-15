@@ -483,13 +483,11 @@ async fn test_lsp_apply_workspace_edit() {
             // Verify that the for loop was modernized
             assert!(
                 modified_content.contains("for i := range 10"),
-                "Expected modernized for loop with 'range 10', got: {}",
-                modified_content
+                "Expected modernized for loop with 'range 10', got: {modified_content}"
             );
             assert!(
                 !modified_content.contains("for i := 0; i < 10; i++"),
-                "Original for loop should be replaced, but still found in: {}",
-                modified_content
+                "Original for loop should be replaced, but still found in: {modified_content}"
             );
 
             info!("✅ Workspace edit successfully applied and verified!");
