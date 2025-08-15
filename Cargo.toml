@@ -2,6 +2,7 @@
 name = "nvim-mcp"
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.88.0"
 description = "MCP server for Neovim"
 documentation = "https://docs.rs/nvim-mcp"
 homepage = "https://github.com/linw1995/nvim-mcp#readme"
