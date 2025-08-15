@@ -90,6 +90,14 @@ pub trait NeovimClientTrait: Sync {
         position: Position,
     ) -> Result<Option<DefinitionResult>, NeovimError>;
 
+    /// Get type definition(s) of a symbol
+    async fn lsp_type_definition(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<DefinitionResult>, NeovimError>;
+
     /// Resolve a code action that may have incomplete data
     async fn lsp_resolve_code_action(
         &self,
@@ -1676,6 +1684,59 @@ where
                 debug!("Failed to get LSP definition: {}", e);
                 Err(NeovimError::Api(format!(
                     "Failed to get LSP definition: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_type_definition(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<DefinitionResult>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_type_definition.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&TextDocumentPositionParams {
+                            text_document,
+                            position,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<DefinitionResult>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(d) => d.into(),
+                    Err(e) => {
+                        debug!("Failed to parse type definition result: {e}");
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse type definition result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get LSP type definition: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get LSP type definition: {e}"
                 )))
             }
         }

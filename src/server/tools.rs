@@ -147,6 +147,24 @@ pub struct DefinitionParams {
     pub character: u64,
 }
 
+/// Type definition parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct TypeDefinitionParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Symbol position, line number starts from 0
+    pub line: u64,
+    /// Symbol position, character number starts from 0
+    pub character: u64,
+}
+
 /// Code action resolve parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ResolveCodeActionParams {
@@ -459,6 +477,28 @@ impl NeovimMcpServer {
             .lsp_definition(&lsp_client_name, document, position)
             .await?;
         Ok(CallToolResult::success(vec![Content::json(definition)?]))
+    }
+
+    #[tool(description = "Get LSP type definition")]
+    #[instrument(skip(self))]
+    pub async fn lsp_type_definition(
+        &self,
+        Parameters(TypeDefinitionParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            line,
+            character,
+        }): Parameters<TypeDefinitionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let position = Position { line, character };
+        let type_definition = client
+            .lsp_type_definition(&lsp_client_name, document, position)
+            .await?;
+        Ok(CallToolResult::success(vec![Content::json(
+            type_definition,
+        )?]))
     }
 
     #[tool(description = "Resolve a code action that may have incomplete data")]

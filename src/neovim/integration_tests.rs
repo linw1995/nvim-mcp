@@ -622,3 +622,122 @@ func main() {
 
     // Temp directory and file automatically cleaned up when temp_dir is dropped
 }
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_type_definition() {
+    // Create a temporary directory and file
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let temp_file_path = temp_dir.path().join("test_type_definition.go");
+
+    // Create a Go file with a custom type and variable using that type
+    let go_content = r#"package main
+
+import "fmt"
+
+type Person struct {
+    Name string
+    Age  int
+}
+
+func main() {
+    var user Person
+    user.Name = "Alice"
+    user.Age = 30
+    fmt.Printf("User: %+v\n", user)
+}
+"#;
+
+    fs::write(&temp_file_path, go_content).expect("Failed to write Go file");
+
+    // Setup Neovim with gopls
+    let ipc_path = generate_random_ipc_path();
+    let child = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        temp_file_path.to_str().unwrap(),
+    )
+    .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
+    let mut client = NeovimClient::new();
+
+    // Connect to instance
+    let result = client.connect_path(&ipc_path).await;
+    assert!(result.is_ok(), "Failed to connect to instance");
+
+    // Set up diagnostics and wait for LSP
+    let result = client.setup_diagnostics_changed_autocmd().await;
+    assert!(
+        result.is_ok(),
+        "Failed to setup diagnostics autocmd: {result:?}"
+    );
+
+    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+
+    // Get LSP clients
+    let lsp_clients = client.lsp_get_clients().await.unwrap();
+    info!("LSP clients: {:?}", lsp_clients);
+    assert!(!lsp_clients.is_empty(), "No LSP clients found");
+
+    // Test type definition lookup for variable "user" on line 10 (0-indexed)
+    // Position cursor on "user" variable declaration
+    let result = client
+        .lsp_type_definition(
+            "gopls",
+            DocumentIdentifier::from_buffer_id(1), // First opened file
+            Position {
+                line: 10,     // Line with var user Person
+                character: 8, // Position on "user"
+            },
+        )
+        .await;
+
+    assert!(result.is_ok(), "Failed to get type definition: {result:?}");
+    let type_definition_result = result.unwrap();
+    info!("Type definition result found: {:?}", type_definition_result);
+    assert!(
+        type_definition_result.is_some(),
+        "Type definition result should not be empty"
+    );
+    let type_definition_result = type_definition_result.unwrap();
+
+    // Extract the first location from the type definition result
+    let first_location = match &type_definition_result {
+        crate::neovim::client::DefinitionResult::Single(loc) => loc,
+        crate::neovim::client::DefinitionResult::Locations(locs) => {
+            assert!(!locs.is_empty(), "No type definitions found");
+            &locs[0]
+        }
+        crate::neovim::client::DefinitionResult::LocationLinks(links) => {
+            assert!(!links.is_empty(), "No type definitions found");
+            // For LocationLinks, we create a Location from the target info
+            let link = &links[0];
+            assert!(
+                link.target_uri.contains("test_type_definition.go"),
+                "Type definition should point to the same file"
+            );
+            // The type definition should point to line 4 (0-indexed) where the Person type is defined
+            assert_eq!(
+                link.target_range.start.line, 4,
+                "Type definition should point to line 4 where Person type is defined"
+            );
+            return; // Early return for LocationLinks case
+        }
+    };
+
+    // For Location cases
+    assert!(
+        first_location.uri.contains("test_type_definition.go"),
+        "Type definition should point to the same file"
+    );
+
+    // The type definition should point to line 4 (0-indexed) where the Person type is defined
+    assert_eq!(
+        first_location.range.start.line, 4,
+        "Type definition should point to line 4 where Person type is defined"
+    );
+
+    info!("✅ LSP type definition lookup successful!");
+
+    // Temp directory and file automatically cleaned up when temp_dir is dropped
+}
