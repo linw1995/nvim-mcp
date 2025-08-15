@@ -71,21 +71,30 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 - **`src/server/core.rs`**: Core infrastructure and server foundation
   - Contains `NeovimMcpServer` struct and core methods
+  - Integrates `HybridToolRouter` for static and dynamic tool management
   - Manages multiple concurrent connections via
     `Arc<DashMap<String, Box<dyn NeovimClientTrait + Send>>>`
   - Handles multi-connection lifecycle with deterministic connection IDs
   - Provides utility functions (BLAKE3 hashing, socket discovery, etc.)
   - Error conversion between `NeovimError` and `McpError`
+  - Exposes dynamic tool registration API for connection-scoped and global tools
 
 - **`src/server/tools.rs`**: MCP tool implementations
-  - Implements eleven MCP tools using the `#[tool]` attribute
+  - Implements eighteen MCP tools using the `#[tool]` attribute
   - Contains parameter structs for tool requests
   - Focuses purely on MCP tool logic and protocol implementation
   - Clean separation from core infrastructure
 
+- **`src/server/hybrid_router.rs`**: Dynamic tool routing system
+  - Implements `HybridToolRouter` that combines static and dynamic tools
+  - Supports connection-scoped and global dynamic tool registration
+  - Provides automatic tool lifecycle management with connection cleanup
+  - Uses lock-free concurrent data structures for high performance
+  - Enables extensibility while maintaining backwards compatibility
+
 - **`src/server/resources.rs`**: MCP resource handlers
   - Implements `ServerHandler` trait for MCP capabilities
-  - Provides server metadata, tool discovery, and resource handling
+  - Uses `HybridToolRouter` for dynamic tool discovery and execution
   - Supports `nvim-diagnostics://` URI scheme for diagnostic resources
   - Handles resource listing and reading operations
 
@@ -103,8 +112,12 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 This modular architecture provides several advantages:
 
-- **Clear Separation of Concerns**: Core infrastructure, MCP tools, and
-  resource handlers are cleanly separated
+- **Clear Separation of Concerns**: Core infrastructure, MCP tools, dynamic routing,
+  and resource handlers are cleanly separated
+- **Extensibility**: `HybridToolRouter` enables dynamic tool registration
+  without code changes
+- **Performance**: Lock-free concurrent data structures for high-throughput
+  tool routing
 - **Easier Maintenance**: Each file has a single, well-defined responsibility
 - **Better Testing**: Components can be tested independently with focused unit tests
 - **Improved Readability**: Developers can quickly find relevant code based on functionality
@@ -116,10 +129,12 @@ This modular architecture provides several advantages:
 ### Data Flow
 
 1. **MCP Communication**: stdio transport ↔ MCP client ↔ `NeovimMcpServer`
-2. **Neovim Integration**: `NeovimMcpServer` → `NeovimClientTrait` → `nvim-rs` →
+2. **Tool Routing**: MCP tool request → `HybridToolRouter` →
+   static/dynamic tool execution
+3. **Neovim Integration**: `NeovimMcpServer` → `NeovimClientTrait` → `nvim-rs` →
    TCP/Unix socket → Neovim instance
-3. **Tool Execution**: MCP tool request → async Neovim API call → response
-4. **Resource Access**: MCP resource request → diagnostic data retrieval →
+4. **Tool Execution**: Routed tool call → async Neovim API call → response
+5. **Resource Access**: MCP resource request → diagnostic data retrieval →
    structured JSON response
 
 ### Connection Management
@@ -129,6 +144,8 @@ This modular architecture provides several advantages:
 - **Deterministic connection IDs** generated using BLAKE3 hash of target string
 - **Connection isolation**: Each connection operates independently with
   proper session isolation
+- **Dynamic tool lifecycle**: Connection-scoped tools automatically cleaned up
+  on disconnect
 - **Proper cleanup** of TCP connections and background tasks on disconnect
 - **Connection validation** before tool execution using connection ID lookup
 
@@ -182,11 +199,11 @@ The server provides these 18 tools (implemented with `#[tool]` attribute):
 6. **`lsp_code_actions`**: Get LSP code actions with universal document
    identification (supports buffer IDs, project-relative paths, and absolute paths)
 7. **`lsp_hover`**: Get LSP hover information with universal document
-    identification (supports buffer IDs, project-relative paths, and absolute paths)
+   identification (supports buffer IDs, project-relative paths, and absolute paths)
 8. **`lsp_document_symbols`**: Get document symbols with universal document
-    identification (supports buffer IDs, project-relative paths, and absolute paths)
+   identification (supports buffer IDs, project-relative paths, and absolute paths)
 9. **`lsp_references`**: Get LSP references with universal document
-    identification (supports buffer IDs, project-relative paths, and absolute paths)
+   identification (supports buffer IDs, project-relative paths, and absolute paths)
 10. **`lsp_resolve_code_action`**: Resolve code actions that may have
     incomplete data
 11. **`lsp_apply_edit`**: Apply workspace edits using Neovim's LSP utility
@@ -234,6 +251,86 @@ The server provides connection-aware resources via multiple URI schemes:
 Resources return structured JSON with diagnostic information including severity,
 messages, file paths, and line/column positions. Connection IDs are deterministic
 BLAKE3 hashes of the target string for consistent identification.
+
+## Dynamic Tool System
+
+The server includes a sophisticated dynamic tool registration system through `HybridToolRouter`:
+
+### HybridToolRouter Architecture
+
+**Core Design:**
+
+- **Dual Tool Support**: Combines static tools (from `#[tool_router]` macro)
+  with dynamic tools
+- **Connection-Scoped Tools**: Tools that are automatically
+  registered/unregistered with connection lifecycle
+- **Global Dynamic Tools**: Tools that persist across connections
+- **Conflict Resolution**: Prevents naming conflicts between static and dynamic tools
+- **Performance Optimized**: Lock-free concurrent access using `Arc<DashMap>`
+
+**Key Components:**
+
+```rust
+pub struct HybridToolRouter {
+    /// Static tools from #[tool_router] macro
+    static_router: ToolRouter<NeovimMcpServer>,
+
+    /// Dynamic tools by name (includes connection-scoped tools)
+    dynamic_tools: Arc<DashMap<String, DynamicTool>>,
+
+    /// Connection-specific tool mapping: connection_id -> tool_names
+    connection_tools: Arc<DashMap<String, HashSet<String>>>,
+}
+```
+
+### Dynamic Tool Registration
+
+**Connection-Scoped Tools:**
+
+- Tools registered with format: `{connection_id}_{tool_name}`
+- Automatically cleaned up when connection disconnects
+- Isolated per connection to prevent interference
+- Perfect for connection-specific functionality
+
+**Global Dynamic Tools:**
+
+- Available across all connections
+- Persist until manually unregistered or server shutdown
+- Useful for workspace-wide functionality
+
+**Tool Lifecycle Management:**
+
+1. **Registration**: Tools registered during connection setup or runtime
+2. **Execution**: Routed through `HybridToolRouter` with priority: dynamic → static
+3. **Cleanup**: Connection-scoped tools automatically removed on disconnect
+
+### Integration with Core Server
+
+**NeovimMcpServer Integration:**
+
+```rust
+impl NeovimMcpServer {
+    /// Register a dynamic tool for a specific connection
+    pub fn register_dynamic_tool(
+        &self,
+        connection_id: &str,
+        tool: DynamicTool,
+    ) -> Result<(), McpError>
+
+    /// Register a global dynamic tool (not connection-scoped)
+    pub fn register_global_dynamic_tool(&self, tool: DynamicTool) -> Result<(), McpError>
+
+    /// Remove all dynamic tools for a connection
+    pub fn unregister_connection_tools(&self, connection_id: &str)
+}
+```
+
+**Benefits:**
+
+- **Extensibility**: Add new tools without code changes or recompilation
+- **Modularity**: Connection-specific functionality remains isolated
+- **Performance**: Efficient tool routing with minimal overhead
+- **Reliability**: Automatic cleanup prevents resource leaks
 
 ## Key Dependencies
 
@@ -299,7 +396,7 @@ To add a new connection-aware tool to the server:
 5. **Testing**: Update integration tests in `src/server/integration_tests.rs`
 
 6. **Registration**: The tool is automatically registered by the
-   `#[tool_router]` macro
+   `#[tool_router]` macro and handled through `HybridToolRouter`
 
 **New Tool Parameter Structures:**
 
