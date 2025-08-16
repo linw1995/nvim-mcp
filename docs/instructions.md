@@ -4,7 +4,7 @@
 
 ### Tools
 
-The server provides 22 MCP tools for interacting with Neovim instances:
+The server provides 23 MCP tools for interacting with Neovim instances:
 
 #### Connection Management
 
@@ -234,6 +234,17 @@ All tools below require a `connection_id` parameter from connection establishmen
     LSP 3.15.0+ formatting preferences including tab size, insert final newline,
     trim trailing whitespace
 
+- **`lsp_organize_imports`**: Sort and organize imports using LSP
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `apply_edits` (boolean, optional): Whether to automatically apply formatting
+      changes (default: true)
+  - **Returns**: Array of TextEdit objects or success confirmation if auto-applied
+  - **Usage**: Sort and organize imports using LSP with auto-apply enabled by default
+
 ### Resources
 
 ### Universal Document Identifier System
@@ -255,7 +266,7 @@ providing enhanced flexibility for code analysis and navigation. The universal L
 tools (`lsp_code_actions`, `lsp_hover`, `lsp_document_symbols`,
 `lsp_references`, `lsp_definition`, `lsp_type_definition`,
 `lsp_implementations`, `lsp_declaration`, `lsp_rename`, `lsp_formatting`,
-`lsp_range_formatting`) accept
+`lsp_range_formatting`, `lsp_organize_imports`) accept
 any of these
 document identifier types.
 

@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### New Features
 
+- **LSP Import Organization**: Added `lsp_organize_imports` tool for sorting and
+  organizing imports using LSP with auto-apply enabled by default
 - **LSP Document Range Formatting**: Added `lsp_range_formatting` tool for
   formatting specific ranges in documents using LSP with support for LSP 3.15.0+
   formatting preferences
@@ -22,10 +24,12 @@ All notable changes to this project will be documented in this file.
 - **LSP Declaration Support**: Added `lsp_declaration` tool for finding symbol
   declarations with universal document identification
 
-### New Tools (4 additional, 22 total)
+### New Tools (5 additional, 23 total)
 
 **Enhanced LSP Integration:**
 
+- `lsp_organize_imports` - Sort and organize imports using LSP with auto-apply
+  enabled by default (buffer IDs, project paths, absolute paths)
 - `lsp_range_formatting` - Format a specific range in a document using LSP with
   support for LSP 3.15.0+ formatting preferences and optional auto-apply
   (buffer IDs, project paths, absolute paths)

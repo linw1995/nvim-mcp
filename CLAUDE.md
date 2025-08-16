@@ -7,7 +7,7 @@ with code in this repository.
 
 This is a Rust-based Model Context Protocol (MCP) server that provides AI
 assistants with programmatic access to Neovim instances. The server supports
-both Unix socket/named pipe and TCP connections, implements 21 core MCP
+both Unix socket/named pipe and TCP connections, implements 23 core MCP
 tools for Neovim interaction, and provides diagnostic resources through the
 `nvim-diagnostics://` URI scheme. The project uses Rust 2024 edition and
 focuses on async/concurrent operations with proper error handling throughout.
@@ -78,7 +78,7 @@ The codebase follows a modular architecture with clear separation of concerns:
   - Error conversion between `NeovimError` and `McpError`
 
 - **`src/server/tools.rs`**: MCP tool implementations
-  - Implements 21 MCP tools using the `#[tool]` attribute
+  - Implements 23 MCP tools using the `#[tool]` attribute
   - Contains parameter structs for tool requests
   - Focuses purely on MCP tool logic and protocol implementation
   - Clean separation from core infrastructure
