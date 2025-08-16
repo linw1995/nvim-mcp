@@ -1006,10 +1006,7 @@ async fn test_lsp_organize_imports_non_existent_file() -> Result<(), Box<dyn std
         .await;
     info!("Organize imports result: {:#?}", result);
 
-    assert!(
-        result.is_err(),
-        "lsp_organize_imports should fail with LSP"
-    );
+    assert!(result.is_err(), "lsp_organize_imports should fail with LSP");
     let r = result.unwrap_err();
     // The result should contain either success message or actions
     assert!(r.to_string().contains("No such file or directory"));
