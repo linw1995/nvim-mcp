@@ -1008,7 +1008,7 @@ async fn test_lsp_organize_imports_non_existent_file() -> Result<(), Box<dyn std
 
     assert!(
         result.is_err(),
-        "lsp_organize_imports should failed with LSP"
+        "lsp_organize_imports should fail with LSP"
     );
     let r = result.unwrap_err();
     // The result should contain either success message or actions
