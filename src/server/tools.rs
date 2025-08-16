@@ -302,6 +302,27 @@ pub struct DocumentRangeFormattingParams {
     pub apply_edits: bool,
 }
 
+/// Organize imports parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct LspOrganizeImportsParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Whether to apply the text edits automatically (default: true)
+    #[serde(default = "default_true")]
+    pub apply_edits: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[tool_router]
 impl NeovimMcpServer {
     #[tool(description = "Get available Neovim targets")]
@@ -837,6 +858,63 @@ impl NeovimMcpServer {
         } else {
             // Return the text edits for inspection
             Ok(CallToolResult::success(vec![Content::json(text_edits)?]))
+        }
+    }
+
+    #[tool(description = "Sort and organize imports")]
+    #[instrument(skip(self))]
+    pub async fn lsp_organize_imports(
+        &self,
+        Parameters(LspOrganizeImportsParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            apply_edits,
+        }): Parameters<LspOrganizeImportsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+
+        // Get organize imports code actions for the entire document
+        let code_actions = client
+            .lsp_get_organize_imports_actions(&lsp_client_name, document)
+            .await?;
+
+        if code_actions.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No organize imports actions available for this document",
+            )]));
+        }
+
+        if !apply_edits {
+            // Return the code actions for inspection
+            return Ok(CallToolResult::success(vec![Content::json(code_actions)?]));
+        }
+
+        // Apply the first/preferred organize imports action
+        let action = code_actions[0].clone();
+
+        // Resolve the action if it needs resolution
+        let resolved_action = if action.has_edit() {
+            action
+        } else {
+            client
+                .lsp_resolve_code_action(&lsp_client_name, action)
+                .await?
+        };
+
+        // Apply the workspace edit
+        if let Some(edit) = resolved_action.edit() {
+            client
+                .lsp_apply_workspace_edit(&lsp_client_name, edit.clone())
+                .await?;
+            Ok(CallToolResult::success(vec![Content::text(
+                "Imports organized successfully",
+            )]))
+        } else {
+            Err(McpError::invalid_request(
+                "Organize imports action does not contain workspace edit".to_string(),
+                None,
+            ))
         }
     }
 }

@@ -68,9 +68,14 @@ pub fn nvim_path() -> &'static str {
 /// Get test data file path
 pub fn get_testdata_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("src/neovim/testdata");
+    path.push("src/testdata");
     path.push(filename);
     path
+}
+
+/// Get test data content
+pub fn get_testdata_content(filename: &str) -> String {
+    std::fs::read_to_string(get_testdata_path(filename)).expect("Failed to read test data file")
 }
 
 /// RAII guard for TCP-based Neovim process cleanup

@@ -271,7 +271,7 @@ async fn test_lsp_resolve_code_action() {
     let temp_file_path = temp_dir.path().join("test_resolve.go");
 
     // Create a Go file with fmt.Println call that can be inlined
-    let go_content = include_str!("testdata/main.go");
+    let go_content = get_testdata_content("main.go");
 
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
@@ -391,7 +391,7 @@ async fn test_lsp_apply_workspace_edit() {
     let temp_file_path = temp_dir.path().join("test_main.go");
 
     // Create a Go file with code that gopls will want to modernize
-    let go_content = include_str!("testdata/main.go");
+    let go_content = get_testdata_content("main.go");
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
     let ipc_path = generate_random_ipc_path();
@@ -991,7 +991,7 @@ async fn test_lsp_rename_with_prepare() {
     let temp_file_path = temp_dir.path().join("test_main.go");
 
     // Create a Go file with code that gopls can analyze
-    let go_content = include_str!("testdata/main.go");
+    let go_content = get_testdata_content("main.go");
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
     let ipc_path = generate_random_ipc_path();
@@ -1094,7 +1094,7 @@ async fn test_lsp_rename_without_prepare() {
     let temp_file_path = temp_dir.path().join("test_main.go");
 
     // Create a Go file with code that gopls can analyze
-    let go_content = include_str!("testdata/main.go");
+    let go_content = get_testdata_content("main.go");
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
     let ipc_path = generate_random_ipc_path();

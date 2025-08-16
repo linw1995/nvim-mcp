@@ -162,6 +162,13 @@ pub trait NeovimClientTrait: Sync {
         options: FormattingOptions,
     ) -> Result<Vec<TextEdit>, NeovimError>;
 
+    /// Get organize imports code actions for entire document
+    async fn lsp_get_organize_imports_actions(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+    ) -> Result<Vec<CodeAction>, NeovimError>;
+
     /// Apply text edits to a document
     async fn lsp_apply_text_edits(
         &self,
@@ -238,7 +245,7 @@ pub struct UserData {
     pub unknowns: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct LSPDiagnostic {
     pub code: Option<String>,
     pub message: String,
@@ -370,7 +377,7 @@ impl DocumentIdentifier {
 
 /// Position in a text document expressed as zero-based line and zero-based character offset.
 /// A position is between two characters like an 'insert' cursor in an editor.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Position {
     /// Line position in a document (zero-based).
     pub line: u64,
@@ -382,7 +389,7 @@ pub struct Position {
     pub character: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Range {
     /// The range's start position.
     pub start: Position,
@@ -397,7 +404,7 @@ pub struct Range {
 ///
 /// The set of kinds is open and client needs to announce the kinds it supports
 /// to the server during initialization.
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema, PartialEq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum CodeActionKind {
     /// Empty kind.
@@ -511,7 +518,7 @@ pub struct CodeActionParams {
     pub context: CodeActionContext,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Disabled {
     /// Human readable description of why the code action is currently
     /// disabled.
@@ -592,7 +599,7 @@ pub struct FormattingOptions {
     pub extras: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Command {
     /// Title of the command, like `save`.
     title: String,
@@ -608,7 +615,7 @@ pub struct Command {
 ///
 /// A CodeAction must set either `edit` and/or a `command`. If both are supplied,
 /// the `edit` is applied first, then the `command` is executed.
-#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
     /// A short, human-readable, title for this code action.
@@ -2282,6 +2289,71 @@ where
             Err(e) => {
                 debug!("Failed to format range: {}", e);
                 Err(NeovimError::Api(format!("Failed to format range: {e}")))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_get_organize_imports_actions(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+    ) -> Result<Vec<CodeAction>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        // For document imports organization, we use an zero-value range
+        let range = Range::default();
+
+        // Request code actions with only source.organizeImports filter
+        let context = CodeActionContext {
+            diagnostics: Vec::new(), // No diagnostics needed for organize imports
+            only: Some(vec![CodeActionKind::SourceOrganizeImports]),
+            trigger_kind: None,
+        };
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        // Get buffer ID for Lua execution (needed for some LSP operations)
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0, // Use buffer 0 as fallback for path-based operations
+        };
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_client_get_code_actions.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&CodeActionParams {
+                            text_document,
+                            range,
+                            context,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                    Value::from(buffer_id),   // bufnr
+                ],
+            )
+            .await
+        {
+            Ok(actions) => {
+                let actions = serde_json::from_str::<CodeActionResult>(actions.as_str().unwrap())
+                    .map_err(|e| {
+                    NeovimError::Api(format!("Failed to parse code actions: {e}"))
+                })?;
+                debug!("Found {} organize imports actions", actions.result.len());
+                Ok(actions.result)
+            }
+            Err(e) => {
+                debug!("Failed to get organize imports actions: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get organize imports actions: {e}"
+                )))
             }
         }
     }

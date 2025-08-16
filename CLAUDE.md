@@ -161,7 +161,7 @@ This modular architecture provides several advantages:
 
 ### Available MCP Tools
 
-The server provides these 22 tools (implemented with `#[tool]` attribute):
+The server provides these 23 tools (implemented with `#[tool]` attribute):
 
 **Connection Management:**
 
@@ -198,6 +198,8 @@ The server provides these 22 tools (implemented with `#[tool]` attribute):
 16. **`lsp_rename`**: Rename symbol across workspace using LSP
 17. **`lsp_formatting`**: Format document using LSP with optional auto-apply
 18. **`lsp_range_formatting`**: Format a specific range in a document using LSP
+19. **`lsp_organize_imports`**: Sort and organize imports using LSP with
+    auto-apply by default
 
 ### Universal Document Identifier System
 
@@ -217,8 +219,8 @@ buffers, providing
 enhanced flexibility for code analysis and navigation. The universal LSP tools
 (`lsp_code_actions`, `lsp_hover`, `lsp_document_symbols`, `lsp_references`,
 `lsp_definition`, `lsp_type_definition`, `lsp_implementations`,
-`lsp_declaration`, `lsp_rename`, `lsp_formatting`, `lsp_range_formatting`) accept
-any of these
+`lsp_declaration`, `lsp_rename`, `lsp_formatting`, `lsp_range_formatting`,
+`lsp_organize_imports`) accept any of these
 document identifier types.
 
 ### MCP Resources
