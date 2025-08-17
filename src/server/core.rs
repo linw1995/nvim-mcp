@@ -2,9 +2,10 @@ use std::process::Command;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use rmcp::{ErrorData as McpError, handler::server::router::tool::ToolRouter};
+use rmcp::ErrorData as McpError;
 use tracing::debug;
 
+use super::hybrid_router::HybridToolRouter;
 use crate::neovim::{NeovimClientTrait, NeovimError};
 
 impl From<NeovimError> for McpError {
@@ -21,20 +22,21 @@ impl From<NeovimError> for McpError {
 
 pub struct NeovimMcpServer {
     pub nvim_clients: Arc<DashMap<String, Box<dyn NeovimClientTrait + Send>>>,
-    pub tool_router: ToolRouter<Self>,
+    pub hybrid_router: HybridToolRouter,
 }
 
 impl NeovimMcpServer {
     pub fn new() -> Self {
         debug!("Creating new NeovimMcpServer instance");
+        let static_router = crate::server::tools::build_tool_router();
         Self {
             nvim_clients: Arc::new(DashMap::new()),
-            tool_router: crate::server::tools::build_tool_router(),
+            hybrid_router: HybridToolRouter::new(static_router),
         }
     }
 
-    pub fn router(&self) -> &ToolRouter<Self> {
-        &self.tool_router
+    pub fn router(&self) -> &HybridToolRouter {
+        &self.hybrid_router
     }
 
     /// Generate shorter connection ID with collision detection
@@ -78,6 +80,26 @@ impl NeovimMcpServer {
                 None,
             )
         })
+    }
+
+    /// Register a connection-specific tool with clean name
+    pub fn register_dynamic_tool(
+        &self,
+        connection_id: &str,
+        tool: super::hybrid_router::DynamicTool,
+    ) -> Result<(), McpError> {
+        self.hybrid_router
+            .register_dynamic_tool(connection_id, tool)
+    }
+
+    /// Remove all dynamic tools for a connection
+    pub fn unregister_dynamic_tools(&self, connection_id: &str) {
+        self.hybrid_router.unregister_dynamic_tools(connection_id)
+    }
+
+    /// Get count of dynamic tools for a connection
+    pub fn get_dynamic_tool_count(&self, connection_id: &str) -> usize {
+        self.hybrid_router.get_connection_tool_count(connection_id)
     }
 }
 
