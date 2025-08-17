@@ -272,13 +272,27 @@ document identifier types.
 
 ### MCP Resources
 
-The server provides connection-aware MCP resources via URI schemes:
+The server provides connection-aware MCP resources via multiple URI schemes:
 
 #### Connection Management Resource
 
 - **`nvim-connections://`**: Lists active Neovim connections
   - **Content**: JSON array of connection objects with `id` and `target`
   - **Usage**: Monitor active connections across multiple Neovim instances
+
+#### Tool Registration Resources
+
+Connection-aware tool registration resources using `nvim-tools://` scheme:
+
+- **`nvim-tools://`**: Overview of all tools and their connection mappings
+  - **Content**: JSON object showing static tools (available to all connections)
+    and dynamic tools (connection-specific)
+  - **Usage**: Understand tool availability and connection mappings across the system
+
+- **`nvim-tools://{connection_id}`**: List of tools available for a specific connection
+  - **Content**: JSON array of tool objects available for the specific connection
+  - **Usage**: Get detailed view of tools available for a particular Neovim instance,
+    including both static and connection-specific dynamic tools
 
 #### Diagnostic Resources
 

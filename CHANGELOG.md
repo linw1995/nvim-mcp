@@ -10,6 +10,38 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### New Features
+
+- **Dynamic Tool System**: Sophisticated dynamic tool registration system through
+  `HybridToolRouter` enabling extensible tool functionality without code changes
+- **Connection-Scoped Tools**: Tools automatically registered/unregistered with
+  connection lifecycle for enhanced modularity
+- **Tool Registration Resources**: New `nvim-tools://` URI scheme for monitoring
+  tool availability and connection mappings
+
+### Architecture Improvements
+
+- **HybridToolRouter**: Combines static tools (from `#[tool_router]` macro) with
+  dynamic tools using lock-free concurrent data structures
+- **Conflict Resolution**: Prevents naming conflicts between static and dynamic tools
+
+### New Resources (2 additional)
+
+**Tool Registration Resources:**
+
+- `nvim-tools://` - Overview of all tools and their connection mappings,
+  showing static tools (available to all connections) and dynamic tools
+  (connection-specific)
+- `nvim-tools://{connection_id}` - List of tools available for a specific
+  connection, including both static and connection-specific dynamic tools
+
+### Technical Enhancements
+
+- Enhanced modular architecture with clear separation between core infrastructure,
+  MCP tools, dynamic routing, and resource handlers
+- Improved extensibility through dynamic tool registration API
+- Enhanced tool visibility through new resource system
+
 ## [v0.4.0] - 2025-08-16
 
 ### New Features

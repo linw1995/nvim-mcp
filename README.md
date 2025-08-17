@@ -16,8 +16,10 @@ connections and access diagnostic information via structured resources.
 - **MCP Resources**: Structured diagnostic data via connection-aware URI schemes
 - **Lua Execution**: Execute arbitrary Lua code directly in Neovim
 - **Plugin Integration**: Automatic setup through Neovim plugin
+- **Dynamic Tool System**: Extensible tool registration with connection-scoped
+  tools and hybrid routing for enhanced functionality
 - **Modular Architecture**: Clean separation between core infrastructure,
-  MCP tools, and resource handlers
+  MCP tools, dynamic routing, and resource handlers
 
 ## Installation
 
@@ -303,6 +305,17 @@ Access diagnostic and connection information through structured URI schemes:
 - **`nvim-connections://`**: List all active Neovim connections
   - Returns array of connection objects with `id` and `target` information
   - Useful for monitoring multiple concurrent Neovim instances
+
+#### Tool Registration Overview
+
+- **`nvim-tools://`**: Overview of all tools and their connection mappings
+  - Shows static tools (available to all connections) and dynamic tools
+    (connection-specific)
+  - Useful for understanding tool availability across connections
+
+- **`nvim-tools://{connection_id}`**: List of tools available for a specific connection
+  - Includes both static and connection-specific dynamic tools
+  - Provides detailed view of tools available for a particular Neovim instance
 
 #### Connection-Scoped Diagnostics
 

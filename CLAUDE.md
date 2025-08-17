@@ -77,7 +77,7 @@ The codebase follows a modular architecture with clear separation of concerns:
   - Handles multi-connection lifecycle with deterministic connection IDs
   - Provides utility functions (BLAKE3 hashing, socket discovery, etc.)
   - Error conversion between `NeovimError` and `McpError`
-  - Exposes dynamic tool registration API for connection-scoped and global tools
+  - Exposes dynamic tool registration API for connection-scoped tools
 
 - **`src/server/tools.rs`**: MCP tool implementations
   - Implements 23 MCP tools using the `#[tool]` attribute
@@ -293,8 +293,8 @@ pub struct HybridToolRouter {
     /// Static tools from #[tool_router] macro
     static_router: ToolRouter<NeovimMcpServer>,
 
-    /// Dynamic tools by name (includes connection-scoped tools)
-    dynamic_tools: Arc<DashMap<String, DynamicTool>>,
+    /// Dynamic tools using nested structure: tool_name -> connection_id -> tool
+    dynamic_tools: Arc<DashMap<String, DashMap<String, DynamicTool>>>,
 
     /// Connection-specific tool mapping: connection_id -> tool_names
     connection_tools: Arc<DashMap<String, HashSet<String>>>,
