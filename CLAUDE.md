@@ -87,7 +87,7 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 - **`src/server/hybrid_router.rs`**: Dynamic tool routing system
   - Implements `HybridToolRouter` that combines static and dynamic tools
-  - Supports connection-scoped and global dynamic tool registration
+  - Supports connection-scoped dynamic tool registration
   - Provides automatic tool lifecycle management with connection cleanup
   - Uses lock-free concurrent data structures for high performance
   - Enables extensibility while maintaining backwards compatibility
@@ -249,6 +249,14 @@ The server provides connection-aware resources via multiple URI schemes:
 - **`nvim-connections://`**: Lists all active Neovim connections with
   their IDs and targets
 
+**Tool Registration Overview:**
+
+- **`nvim-tools://`**: Overview of all tools and their connection mappings,
+  showing static tools (available to all connections) and dynamic tools
+  (connection-specific)
+- **`nvim-tools://{connection_id}`**: List of tools available for a specific
+  connection, including both static and connection-specific dynamic tools
+
 **Connection-Scoped Diagnostics** via `nvim-diagnostics://` URI scheme:
 
 - **`nvim-diagnostics://{connection_id}/workspace`**: All diagnostic
@@ -272,9 +280,11 @@ The server includes a sophisticated dynamic tool registration system through `Hy
   with dynamic tools
 - **Connection-Scoped Tools**: Tools that are automatically
   registered/unregistered with connection lifecycle
-- **Global Dynamic Tools**: Tools that persist across connections
 - **Conflict Resolution**: Prevents naming conflicts between static and dynamic tools
 - **Performance Optimized**: Lock-free concurrent access using `Arc<DashMap>`
+- **Clean Tool Names**: Connection-specific tools maintain clean names without prefixes
+- **Tool Visibility**: New resource system provides insight into
+  tool-connection mappings
 
 **Key Components:**
 
@@ -300,12 +310,6 @@ pub struct HybridToolRouter {
 - Isolated per connection to prevent interference
 - Perfect for connection-specific functionality
 
-**Global Dynamic Tools:**
-
-- Available across all connections
-- Persist until manually unregistered or server shutdown
-- Useful for workspace-wide functionality
-
 **Tool Lifecycle Management:**
 
 1. **Registration**: Tools registered during connection setup or runtime
@@ -318,18 +322,16 @@ pub struct HybridToolRouter {
 
 ```rust
 impl NeovimMcpServer {
-    /// Register a dynamic tool for a specific connection
+    /// Register a connection-specific tool with clean name
     pub fn register_dynamic_tool(
         &self,
         connection_id: &str,
         tool: DynamicTool,
     ) -> Result<(), McpError>
 
-    /// Register a global dynamic tool (not connection-scoped)
-    pub fn register_global_dynamic_tool(&self, tool: DynamicTool) -> Result<(), McpError>
 
     /// Remove all dynamic tools for a connection
-    pub fn unregister_connection_tools(&self, connection_id: &str)
+    pub fn unregister_dynamic_tools(&self, connection_id: &str)
 }
 ```
 

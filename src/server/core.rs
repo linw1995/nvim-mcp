@@ -82,7 +82,7 @@ impl NeovimMcpServer {
         })
     }
 
-    /// Register a dynamic tool for a specific connection
+    /// Register a connection-specific tool with clean name
     pub fn register_dynamic_tool(
         &self,
         connection_id: &str,
@@ -92,18 +92,9 @@ impl NeovimMcpServer {
             .register_dynamic_tool(connection_id, tool)
     }
 
-    /// Register a global dynamic tool (not connection-scoped)
-    pub fn register_global_dynamic_tool(
-        &self,
-        tool: super::hybrid_router::DynamicTool,
-    ) -> Result<(), McpError> {
-        self.hybrid_router.register_global_dynamic_tool(tool)
-    }
-
     /// Remove all dynamic tools for a connection
-    pub fn unregister_connection_tools(&self, connection_id: &str) {
-        self.hybrid_router
-            .unregister_connection_tools(connection_id)
+    pub fn unregister_dynamic_tools(&self, connection_id: &str) {
+        self.hybrid_router.unregister_dynamic_tools(connection_id)
     }
 
     /// Get count of dynamic tools for a connection
