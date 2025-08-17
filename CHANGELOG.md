@@ -1,13 +1,55 @@
 # Changelog
 
+<!-- markdownlint-configure-file
+{
+  "no-duplicate-heading": false
+}
+-->
+
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
+## [v0.4.0] - 2025-08-16
+
+### New Features
+
+- **LSP Import Organization**: Added `lsp_organize_imports` tool for sorting and
+  organizing imports using LSP with auto-apply enabled by default
+- **LSP Document Range Formatting**: Added `lsp_range_formatting` tool for
+  formatting specific ranges in documents using LSP with support for LSP 3.15.0+
+  formatting preferences
+- **LSP Document Formatting**: Added `lsp_formatting` tool for formatting documents
+  using LSP with support for LSP 3.15.0+ formatting preferences
+- **LSP Symbol Renaming**: Added `lsp_rename` tool for renaming symbols across
+  workspace with optional prepare rename validation
+- **LSP Declaration Support**: Added `lsp_declaration` tool for finding symbol
+  declarations with universal document identification
+
+### New Tools (5 additional, 23 total)
+
+**Enhanced LSP Integration:**
+
+- `lsp_organize_imports` - Sort and organize imports using LSP with auto-apply
+  enabled by default (buffer IDs, project paths, absolute paths)
+- `lsp_range_formatting` - Format a specific range in a document using LSP with
+  support for LSP 3.15.0+ formatting preferences and optional auto-apply
+  (buffer IDs, project paths, absolute paths)
+- `lsp_formatting` - Format document using LSP with support for LSP 3.15.0+
+  formatting preferences and optional auto-apply (buffer IDs, project paths,
+  absolute paths)
+- `lsp_rename` - Rename symbol across workspace using LSP with optional
+  validation via prepare rename (buffer IDs, project paths, absolute paths)
+- `lsp_declaration` - Get LSP declaration with universal document identification
+  (buffer IDs, project paths, absolute paths)
+
+## [v0.3.0] - 2025-08-15
+
+### New Features
 
 - **LSP Implementation Support**: Added `lsp_implementations` tool for finding
-  interface/abstract class implementations with universal document identification
+  interface/abstract class implementations with universal document
+  identification (#33)
 - **LSP Definition and Type Definition Support**: Added `lsp_definition` and
   `lsp_type_definition` tools for comprehensive symbol navigation with universal
   document identification
@@ -22,6 +64,16 @@ All notable changes to this project will be documented in this file.
   (buffer IDs, project paths, absolute paths)
 - `lsp_type_definition` - Get LSP type definition with universal document
   identification (buffer IDs, project paths, absolute paths)
+
+### Fixed
+
+- **Package Metadata**: Fixed commit SHA detection for crates.io packages (#38)
+- **Rust Compatibility**: Added minimum supported Rust version (MSRV) requirement
+  to prevent cryptic let-chains errors on older Rust compilers (#37)
+
+### Infrastructure
+
+- **Build System**: Enhanced crate metadata and build-time information
 
 ## [v0.2.0] - 2025-08-14
 

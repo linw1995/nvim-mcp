@@ -121,7 +121,7 @@ Once both the MCP server and Neovim are running, here's a typical workflow:
 
 ## Available Tools
 
-The server provides 18 MCP tools for interacting with Neovim:
+The server provides 23 MCP tools for interacting with Neovim:
 
 ### Connection Management
 
@@ -209,6 +209,42 @@ establishment phase:
     (all positions are 0-indexed)
   - Returns: Implementation result supporting Location arrays, LocationLink arrays,
     or null responses
+
+- **`lsp_declaration`**: Get LSP declaration with universal document identification
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `line` (number), `character` (number)
+    (all positions are 0-indexed)
+  - Returns: Declaration result supporting Location arrays, LocationLink arrays,
+    or null responses
+
+- **`lsp_rename`**: Rename symbol across workspace using LSP
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `line` (number), `character` (number),
+    `new_name` (string), `prepare_first` (boolean, optional)
+    (all positions are 0-indexed)
+  - Returns: WorkspaceEdit with file changes or validation errors
+
+- **`lsp_formatting`**: Format document using LSP
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `options` (FormattingOptions),
+    `apply_edits` (boolean, optional) (all positions are 0-indexed)
+  - Returns: Array of TextEdit objects or success confirmation if auto-applied
+  - Notes: Supports LSP 3.15.0+ formatting preferences including tab size,
+    insert final newline, trim trailing whitespace, etc.
+
+- **`lsp_range_formatting`**: Format a specific range in a document using LSP
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `start_line` (number), `start_character` (number),
+    `end_line` (number), `end_character` (number), `options` (FormattingOptions),
+    `apply_edits` (boolean, optional) (all positions are 0-indexed)
+  - Returns: Array of TextEdit objects or success confirmation if auto-applied
+  - Notes: Formats only the specified range with LSP 3.15.0+ formatting preferences
+
+- **`lsp_organize_imports`**: Sort and organize imports using LSP
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `apply_edits` (boolean, optional)
+  - Returns: Array of TextEdit objects or success confirmation if auto-applied
+  - Notes: Organizes and sorts imports with auto-apply enabled by default
 
 ### Universal Document Identifier
 

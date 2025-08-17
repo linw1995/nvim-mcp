@@ -4,7 +4,7 @@
 
 ### Tools
 
-The server provides 18 MCP tools for interacting with Neovim instances:
+The server provides 23 MCP tools for interacting with Neovim instances:
 
 #### Connection Management
 
@@ -173,6 +173,78 @@ All tools below require a `connection_id` parameter from connection establishmen
   - **Usage**: Find interface/abstract class implementations with universal
     document identification for enhanced code navigation
 
+- **`lsp_declaration`**: Get LSP declaration with universal document identification
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `line` (number): Symbol position line (0-indexed)
+    - `character` (number): Symbol position character (0-indexed)
+  - **Returns**: Declaration result supporting Location arrays, LocationLink
+    arrays, or null responses
+  - **Usage**: Find symbol declarations with universal document identification
+    for enhanced code navigation
+
+- **`lsp_rename`**: Rename symbol across workspace using LSP
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `line` (number): Symbol position line (0-indexed)
+    - `character` (number): Symbol position character (0-indexed)
+    - `new_name` (string): New name for the symbol
+    - `prepare_first` (boolean, optional): Whether to run prepare rename first
+      for validation (default: true)
+  - **Returns**: WorkspaceEdit with file changes or validation errors
+  - **Usage**: Rename symbols across workspace with optional validation via
+    prepare rename
+
+- **`lsp_formatting`**: Format document using LSP
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `options` (FormattingOptions): LSP formatting preferences
+    - `apply_edits` (boolean, optional): Whether to automatically apply formatting
+      changes (default: false)
+  - **Returns**: Array of TextEdit objects or success confirmation if auto-applied
+  - **Usage**: Format documents using LSP with support for LSP 3.15.0+ formatting
+    preferences including tab size, insert final newline, trim trailing whitespace
+
+- **`lsp_range_formatting`**: Format a specific range in a document using LSP
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `start_line` (number): Range start position, line number starts from 0
+    - `start_character` (number): Range start position, character number starts
+      from 0
+    - `end_line` (number): Range end position, line number starts from 0
+    - `end_character` (number): Range end position, character number starts
+      from 0
+    - `options` (FormattingOptions): LSP formatting preferences
+    - `apply_edits` (boolean, optional): Whether to automatically apply formatting
+      changes (default: false)
+  - **Returns**: Array of TextEdit objects or success confirmation if auto-applied
+  - **Usage**: Format a specific range in documents using LSP with support for
+    LSP 3.15.0+ formatting preferences including tab size, insert final newline,
+    trim trailing whitespace
+
+- **`lsp_organize_imports`**: Sort and organize imports using LSP
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `document` (DocumentIdentifier): Universal document identifier
+      (BufferId, ProjectRelativePath, or AbsolutePath)
+    - `lsp_client_name` (string): LSP client name from lsp_clients
+    - `apply_edits` (boolean, optional): Whether to automatically apply formatting
+      changes (default: true)
+  - **Returns**: Array of TextEdit objects or success confirmation if auto-applied
+  - **Usage**: Sort and organize imports using LSP with auto-apply enabled by default
+
 ### Resources
 
 ### Universal Document Identifier System
@@ -193,7 +265,10 @@ This system enables LSP operations on files that may not be open in Neovim buffe
 providing enhanced flexibility for code analysis and navigation. The universal LSP
 tools (`lsp_code_actions`, `lsp_hover`, `lsp_document_symbols`,
 `lsp_references`, `lsp_definition`, `lsp_type_definition`,
-`lsp_implementations`) accept any of these document identifier types.
+`lsp_implementations`, `lsp_declaration`, `lsp_rename`, `lsp_formatting`,
+`lsp_range_formatting`, `lsp_organize_imports`) accept
+any of these
+document identifier types.
 
 ### MCP Resources
 

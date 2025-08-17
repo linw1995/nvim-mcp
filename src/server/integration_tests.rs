@@ -1,10 +1,12 @@
+use std::time::Duration;
+
 use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
     serde_json::{Map, Value},
     service::ServiceExt,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
-use tokio::process::Command;
+use tokio::{process::Command, time};
 use tracing::{error, info};
 use tracing_test::traced_test;
 
@@ -934,6 +936,258 @@ async fn test_read_workspace_diagnostics() -> Result<(), Box<dyn std::error::Err
     // Cleanup happens automatically via guard
     service.cancel().await?;
     info!("Read workspace diagnostics test completed successfully");
+
+    Ok(())
+}
+
+#[traced_test]
+#[tokio::test]
+async fn test_lsp_organize_imports_non_existent_file() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_organize_imports with non-existent file");
+
+    let service = ()
+        .serve(TokioChildProcess::new(Command::new("cargo").configure(
+            |cmd| {
+                cmd.args(["run", "--bin", "nvim-mcp"]);
+            },
+        ))?)
+        .await
+        .map_err(|e| {
+            error!("Failed to connect to server: {}", e);
+            e
+        })?;
+
+    // Start a test Neovim instance
+    let ipc_path = generate_random_ipc_path();
+    let _guard = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("organize_imports.go").to_str().unwrap(),
+    )
+    .await;
+
+    // Establish connection
+    let connection_id = {
+        let mut connect_args = Map::new();
+        connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "connect".into(),
+                arguments: Some(connect_args),
+            })
+            .await?;
+
+        info!("Connection established successfully");
+        extract_connection_id(&result)?
+    };
+
+    // Test lsp_organize_imports with valid connection but non-existent file
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "document".to_string(),
+        Value::String(r#"{"project_relative_path": "non_existent_file.go"}"#.to_string()),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert("apply_edits".to_string(), Value::Bool(false));
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_organize_imports".into(),
+            arguments: Some(args),
+        })
+        .await;
+    info!("Organize imports result: {:#?}", result);
+
+    assert!(result.is_err(), "lsp_organize_imports should fail with LSP");
+    let r = result.unwrap_err();
+    // The result should contain either success message or actions
+    assert!(r.to_string().contains("No such file or directory"));
+
+    service.cancel().await?;
+    info!("Non-existent file test completed successfully");
+
+    Ok(())
+}
+
+#[traced_test]
+#[tokio::test]
+async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_organize_imports with LSP setup");
+
+    let service = ()
+        .serve(TokioChildProcess::new(Command::new("cargo").configure(
+            |cmd| {
+                cmd.args(["run", "--bin", "nvim-mcp"]);
+            },
+        ))?)
+        .await
+        .map_err(|e| {
+            error!("Failed to connect to server: {}", e);
+            e
+        })?;
+
+    // Start a test Neovim instance with LSP
+    let ipc_path = generate_random_ipc_path();
+    let _guard = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("main.go").to_str().unwrap(),
+    )
+    .await;
+
+    time::sleep(Duration::from_secs(1)).await; // Ensure LSP is ready
+
+    // Establish connection
+    let connection_id = {
+        let mut connect_args = Map::new();
+        connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "connect".into(),
+                arguments: Some(connect_args),
+            })
+            .await?;
+
+        info!("Connection established successfully");
+        extract_connection_id(&result)?
+    };
+
+    // Test lsp_organize_imports with apply_edits=true
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "document".to_string(),
+        Value::String(r#"{"buffer_id": 0}"#.to_string()),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert("apply_edits".to_string(), Value::Bool(true));
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_organize_imports".into(),
+            arguments: Some(args),
+        })
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "lsp_organize_imports should succeed with LSP"
+    );
+    let r = result.unwrap();
+    info!("Organize imports with LSP succeeded: {:?}", r);
+    // The result should contain either success message or actions
+    assert!(r.content.is_some());
+    assert!(
+        serde_json::to_string(&r)
+            .unwrap()
+            .contains("No organize imports actions available for this document")
+    );
+
+    service.cancel().await?;
+    info!("LSP organize imports test completed successfully");
+
+    Ok(())
+}
+
+#[traced_test]
+#[tokio::test]
+async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_organize_imports in inspect mode (apply_edits=false)");
+
+    let service = ()
+        .serve(TokioChildProcess::new(Command::new("cargo").configure(
+            |cmd| {
+                cmd.args(["run", "--bin", "nvim-mcp"]);
+            },
+        ))?)
+        .await
+        .map_err(|e| {
+            error!("Failed to connect to server: {}", e);
+            e
+        })?;
+
+    // Start a test Neovim instance with LSP
+    let ipc_path = generate_random_ipc_path();
+    let _guard = setup_neovim_instance_ipc_advance(
+        &ipc_path,
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("organize_imports.go").to_str().unwrap(),
+    )
+    .await;
+
+    time::sleep(Duration::from_secs(1)).await; // Ensure LSP is ready
+
+    // Establish connection
+    let connection_id = {
+        let mut connect_args = Map::new();
+        connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "connect".into(),
+                arguments: Some(connect_args),
+            })
+            .await?;
+
+        info!("Connection established successfully");
+        extract_connection_id(&result)?
+    };
+
+    // Test lsp_organize_imports with apply_edits=false (inspect mode)
+    let mut inspect_args = Map::new();
+    inspect_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    inspect_args.insert(
+        "document".to_string(),
+        Value::String(r#"{"buffer_id": 0}"#.to_string()),
+    );
+    inspect_args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    inspect_args.insert("apply_edits".to_string(), Value::Bool(false));
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_organize_imports".into(),
+            arguments: Some(inspect_args),
+        })
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "lsp_organize_imports should succeed in inspect mode"
+    );
+
+    let r = result.unwrap();
+    info!("Organize imports inspection succeeded: {:?}", r);
+    // The result should contain either code actions or a message about no actions
+    assert!(r.content.is_some());
+    assert!(
+        serde_json::to_string(&r)
+            .unwrap()
+            .contains("documentChanges")
+    );
+
+    service.cancel().await?;
+    info!("Inspect mode test completed successfully");
 
     Ok(())
 }

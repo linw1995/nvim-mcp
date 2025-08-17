@@ -8,8 +8,8 @@ use tracing::instrument;
 
 use super::core::{NeovimMcpServer, find_get_all_targets};
 use crate::neovim::{
-    CodeAction, DocumentIdentifier, NeovimClient, NeovimClientTrait, Position, Range,
-    WorkspaceEdit, string_or_struct,
+    CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient, NeovimClientTrait, Position,
+    PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
 };
 
 /// Connect to Neovim instance via unix socket or TCP
@@ -183,6 +183,24 @@ pub struct ImplementationParams {
     pub character: u64,
 }
 
+/// Declaration parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DeclarationParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Symbol position, line number starts from 0
+    pub line: u64,
+    /// Symbol position, character number starts from 0
+    pub character: u64,
+}
+
 /// Code action resolve parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ResolveCodeActionParams {
@@ -209,6 +227,100 @@ pub struct ApplyWorkspaceEditParams {
     // Compatible with Claude Code when using subscription.
     #[serde(deserialize_with = "string_or_struct")]
     pub workspace_edit: WorkspaceEdit,
+}
+
+/// Rename parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RenameParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Symbol position, line number starts from 0
+    pub line: u64,
+    /// Symbol position, character number starts from 0
+    pub character: u64,
+    /// The new name of the symbol
+    pub new_name: String,
+    /// Whether to run prepare rename first to validate the position (default: true)
+    #[serde(default = "default_prepare_first")]
+    pub prepare_first: bool,
+}
+
+fn default_prepare_first() -> bool {
+    true
+}
+
+/// Document formatting parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DocumentFormattingParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// The formatting options
+    pub options: FormattingOptions,
+    /// Whether to apply the text edits automatically (default: false)
+    #[serde(default)]
+    pub apply_edits: bool,
+}
+
+/// Document range formatting parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DocumentRangeFormattingParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Range start position, line number starts from 0
+    pub start_line: u64,
+    /// Range start position, character number starts from 0
+    pub start_character: u64,
+    /// Range end position, line number starts from 0
+    pub end_line: u64,
+    /// Range end position, character number starts from 0
+    pub end_character: u64,
+    /// The formatting options
+    pub options: FormattingOptions,
+    /// Whether to apply the text edits automatically (default: false)
+    #[serde(default)]
+    pub apply_edits: bool,
+}
+
+/// Organize imports parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct LspOrganizeImportsParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Whether to apply the text edits automatically (default: true)
+    #[serde(default = "default_true")]
+    pub apply_edits: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[tool_router]
@@ -541,6 +653,26 @@ impl NeovimMcpServer {
         )?]))
     }
 
+    #[tool(description = "Get LSP declaration")]
+    #[instrument(skip(self))]
+    pub async fn lsp_declaration(
+        &self,
+        Parameters(DeclarationParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            line,
+            character,
+        }): Parameters<DeclarationParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let position = Position { line, character };
+        let declaration = client
+            .lsp_declaration(&lsp_client_name, document, position)
+            .await?;
+        Ok(CallToolResult::success(vec![Content::json(declaration)?]))
+    }
+
     #[tool(description = "Resolve a code action that may have incomplete data")]
     #[instrument(skip(self))]
     pub async fn lsp_resolve_code_action(
@@ -575,6 +707,215 @@ impl NeovimMcpServer {
             .lsp_apply_workspace_edit(&lsp_client_name, workspace_edit)
             .await?;
         Ok(CallToolResult::success(vec![Content::text("success")]))
+    }
+
+    #[tool(description = "Rename symbol across workspace using LSP with optional validation")]
+    #[instrument(skip(self))]
+    pub async fn lsp_rename(
+        &self,
+        Parameters(RenameParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            line,
+            character,
+            new_name,
+            prepare_first,
+        }): Parameters<RenameParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let position = Position { line, character };
+
+        // Optionally run prepare rename first to validate the position
+        if prepare_first {
+            match client
+                .lsp_prepare_rename(&lsp_client_name, document.clone(), position.clone())
+                .await
+            {
+                Ok(Some(prepare_result)) => {
+                    // Prepare rename was successful, we can proceed
+                    let prepare_info = match prepare_result {
+                        PrepareRenameResult::Range(range) => {
+                            format!("Range: {:?}", range)
+                        }
+                        PrepareRenameResult::RangeWithPlaceholder { range, placeholder } => {
+                            format!("Range: {:?}, Current name: '{}'", range, placeholder)
+                        }
+                        PrepareRenameResult::DefaultBehavior { .. } => {
+                            "Default behavior enabled".to_string()
+                        }
+                    };
+                    tracing::debug!("Prepare rename successful: {}", prepare_info);
+                }
+                Ok(None) => {
+                    return Err(McpError::invalid_request(
+                        "Position is not renameable according to prepare rename".to_string(),
+                        None,
+                    ));
+                }
+                Err(e) => {
+                    return Err(McpError::invalid_request(
+                        format!("Prepare rename failed: {}", e),
+                        None,
+                    ));
+                }
+            }
+        }
+
+        // Proceed with the actual rename
+        let workspace_edit = client
+            .lsp_rename(&lsp_client_name, document, position, &new_name)
+            .await?;
+
+        if let Some(edit) = workspace_edit {
+            // Apply the workspace edit automatically
+            client
+                .lsp_apply_workspace_edit(&lsp_client_name, edit)
+                .await?;
+            Ok(CallToolResult::success(vec![Content::text(
+                "Rename completed successfully",
+            )]))
+        } else {
+            Err(McpError::invalid_request(
+                "Rename operation is not valid at this position".to_string(),
+                None,
+            ))
+        }
+    }
+
+    #[tool(description = "Format entire document using LSP with optional auto-apply")]
+    #[instrument(skip(self))]
+    pub async fn lsp_formatting(
+        &self,
+        Parameters(DocumentFormattingParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            options,
+            apply_edits,
+        }): Parameters<DocumentFormattingParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let text_edits = client
+            .lsp_formatting(&lsp_client_name, document.clone(), options)
+            .await?;
+
+        if apply_edits {
+            // Apply the text edits automatically
+            client
+                .lsp_apply_text_edits(&lsp_client_name, document, text_edits)
+                .await?;
+            Ok(CallToolResult::success(vec![Content::text(
+                "Formatting applied successfully",
+            )]))
+        } else {
+            // Return the text edits for inspection
+            Ok(CallToolResult::success(vec![Content::json(text_edits)?]))
+        }
+    }
+
+    #[tool(
+        description = "Format a specific range in a document using LSP with optional auto-apply"
+    )]
+    #[instrument(skip(self))]
+    pub async fn lsp_range_formatting(
+        &self,
+        Parameters(DocumentRangeFormattingParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            start_line,
+            start_character,
+            end_line,
+            end_character,
+            options,
+            apply_edits,
+        }): Parameters<DocumentRangeFormattingParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let start = Position {
+            line: start_line,
+            character: start_character,
+        };
+        let end = Position {
+            line: end_line,
+            character: end_character,
+        };
+        let range = Range { start, end };
+
+        let text_edits = client
+            .lsp_range_formatting(&lsp_client_name, document.clone(), range, options)
+            .await?;
+
+        if apply_edits {
+            // Apply the text edits automatically
+            client
+                .lsp_apply_text_edits(&lsp_client_name, document, text_edits)
+                .await?;
+            Ok(CallToolResult::success(vec![Content::text(
+                "Range formatting applied successfully",
+            )]))
+        } else {
+            // Return the text edits for inspection
+            Ok(CallToolResult::success(vec![Content::json(text_edits)?]))
+        }
+    }
+
+    #[tool(description = "Sort and organize imports")]
+    #[instrument(skip(self))]
+    pub async fn lsp_organize_imports(
+        &self,
+        Parameters(LspOrganizeImportsParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            apply_edits,
+        }): Parameters<LspOrganizeImportsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+
+        // Get organize imports code actions for the entire document
+        let code_actions = client
+            .lsp_get_organize_imports_actions(&lsp_client_name, document)
+            .await?;
+
+        if code_actions.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "No organize imports actions available for this document",
+            )]));
+        }
+
+        if !apply_edits {
+            // Return the code actions for inspection
+            return Ok(CallToolResult::success(vec![Content::json(code_actions)?]));
+        }
+
+        // Apply the first/preferred organize imports action
+        let action = code_actions[0].clone();
+
+        // Resolve the action if it needs resolution
+        let resolved_action = if action.has_edit() {
+            action
+        } else {
+            client
+                .lsp_resolve_code_action(&lsp_client_name, action)
+                .await?
+        };
+
+        // Apply the workspace edit
+        if let Some(edit) = resolved_action.edit() {
+            client
+                .lsp_apply_workspace_edit(&lsp_client_name, edit.clone())
+                .await?;
+            Ok(CallToolResult::success(vec![Content::text(
+                "Imports organized successfully",
+            )]))
+        } else {
+            Err(McpError::invalid_request(
+                "Organize imports action does not contain workspace edit".to_string(),
+                None,
+            ))
+        }
     }
 }
 

@@ -68,6 +68,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Bake commit SHA into crate
+        run: echo "${GITHUB_SHA}" > .packaged-commit
+
       - name: Publish crates.io
         run: |
-          cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+          cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} --allow-dirty

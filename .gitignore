@@ -4,3 +4,6 @@
 .lazy.lua
 .direnv
 .envrc
+
+# Baked commit file used for crates.io packaging
+.packaged-commit

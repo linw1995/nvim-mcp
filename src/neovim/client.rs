@@ -106,6 +106,14 @@ pub trait NeovimClientTrait: Sync {
         position: Position,
     ) -> Result<Option<LocateResult>, NeovimError>;
 
+    /// Get declaration(s) of a symbol
+    async fn lsp_declaration(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<LocateResult>, NeovimError>;
+
     /// Resolve a code action that may have incomplete data
     async fn lsp_resolve_code_action(
         &self,
@@ -118,6 +126,55 @@ pub trait NeovimClientTrait: Sync {
         &self,
         client_name: &str,
         workspace_edit: WorkspaceEdit,
+    ) -> Result<(), NeovimError>;
+
+    /// Prepare rename operation to validate position and get range/placeholder
+    async fn lsp_prepare_rename(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<PrepareRenameResult>, NeovimError>;
+
+    /// Rename symbol across workspace
+    async fn lsp_rename(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+        new_name: &str,
+    ) -> Result<Option<WorkspaceEdit>, NeovimError>;
+
+    /// Format document using LSP
+    async fn lsp_formatting(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        options: FormattingOptions,
+    ) -> Result<Vec<TextEdit>, NeovimError>;
+
+    /// Format document range using LSP
+    async fn lsp_range_formatting(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        range: Range,
+        options: FormattingOptions,
+    ) -> Result<Vec<TextEdit>, NeovimError>;
+
+    /// Get organize imports code actions for entire document
+    async fn lsp_get_organize_imports_actions(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+    ) -> Result<Vec<CodeAction>, NeovimError>;
+
+    /// Apply text edits to a document
+    async fn lsp_apply_text_edits(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        text_edits: Vec<TextEdit>,
     ) -> Result<(), NeovimError>;
 }
 
@@ -169,7 +226,7 @@ where
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Diagnostic {
     pub message: String,
-    pub code: Option<String>,
+    pub code: Option<serde_json::Value>,
     pub severity: u8,
     pub lnum: u64,
     pub col: u64,
@@ -188,9 +245,9 @@ pub struct UserData {
     pub unknowns: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct LSPDiagnostic {
-    pub code: Option<String>,
+    pub code: Option<serde_json::Value>,
     pub message: String,
     pub range: Range,
     pub severity: u8,
@@ -320,7 +377,7 @@ impl DocumentIdentifier {
 
 /// Position in a text document expressed as zero-based line and zero-based character offset.
 /// A position is between two characters like an 'insert' cursor in an editor.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Position {
     /// Line position in a document (zero-based).
     pub line: u64,
@@ -332,7 +389,7 @@ pub struct Position {
     pub character: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Range {
     /// The range's start position.
     pub start: Position,
@@ -347,7 +404,7 @@ pub struct Range {
 ///
 /// The set of kinds is open and client needs to announce the kinds it supports
 /// to the server during initialization.
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema, PartialEq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum CodeActionKind {
     /// Empty kind.
@@ -461,7 +518,7 @@ pub struct CodeActionParams {
     pub context: CodeActionContext,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Disabled {
     /// Human readable description of why the code action is currently
     /// disabled.
@@ -488,6 +545,7 @@ pub struct TextEdit {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceEdit {
     /// Holds changes to existing resources.
+    #[serde(skip_serializing_if = "Option::is_none")]
     changes: Option<std::collections::HashMap<String, Vec<TextEdit>>>,
 
     /// Depending on the client capability
@@ -503,6 +561,7 @@ pub struct WorkspaceEdit {
     /// If a client neither supports `documentChanges` nor
     /// `workspace.workspaceEdit.resourceOperations` then only plain `TextEdit`s
     /// using the `changes` property are supported.
+    #[serde(skip_serializing_if = "Option::is_none")]
     document_changes: Option<Vec<serde_json::Value>>,
     /// A map of change annotations that can be referenced in
     /// `AnnotatedTextEdit`s or create, rename and delete file / folder
@@ -512,12 +571,35 @@ pub struct WorkspaceEdit {
     /// `workspace.changeAnnotationSupport`.
     ///
     /// @since 3.16.0
+    #[serde(skip_serializing_if = "Option::is_none")]
     change_annotations: Option<HashMap<String, serde_json::Value>>,
 }
 
 impl_fromstr_serde_json!(WorkspaceEdit);
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+/// Formatting options for LSP document formatting
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FormattingOptions {
+    /// Size of a tab in spaces
+    pub tab_size: u32,
+    /// Prefer spaces over tabs
+    pub insert_spaces: bool,
+    /// Trim trailing whitespace on a line (since LSP 3.15.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trim_trailing_whitespace: Option<bool>,
+    /// Insert a newline character at the end of the file if one does not exist (since LSP 3.15.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub insert_final_newline: Option<bool>,
+    /// Trim all newlines after the final newline at the end of the file (since LSP 3.15.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trim_final_newlines: Option<bool>,
+    /// For further properties.
+    #[serde(flatten)]
+    pub extras: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Command {
     /// Title of the command, like `save`.
     title: String,
@@ -533,7 +615,7 @@ pub struct Command {
 ///
 /// A CodeAction must set either `edit` and/or a `command`. If both are supplied,
 /// the `edit` is applied first, then the `command` is executed.
-#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
     /// A short, human-readable, title for this code action.
@@ -935,6 +1017,30 @@ pub struct WorkspaceSymbolResult {
     pub result: Option<DocumentSymbolResult>,
     #[serde(flatten)]
     pub unknowns: HashMap<String, serde_json::Value>,
+}
+
+/// Prepare rename response variants
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum PrepareRenameResult {
+    Range(Range),
+    RangeWithPlaceholder {
+        range: Range,
+        placeholder: String,
+    },
+    DefaultBehavior {
+        #[serde(rename = "defaultBehavior")]
+        default_behavior: bool,
+    },
+}
+
+/// Rename request parameters for LSP
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameRequestParams {
+    pub text_document: TextDocumentIdentifier,
+    pub position: Position,
+    pub new_name: String,
 }
 
 pub struct NeovimClient<T>
@@ -1804,6 +1910,59 @@ where
     }
 
     #[instrument(skip(self))]
+    async fn lsp_declaration(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<LocateResult>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_declaration.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&TextDocumentPositionParams {
+                            text_document,
+                            position,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<LocateResult>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(d) => d.into(),
+                    Err(e) => {
+                        debug!("Failed to parse declaration result: {e}");
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse declaration result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get LSP declaration: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get LSP declaration: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
     async fn lsp_resolve_code_action(
         &self,
         client_name: &str,
@@ -1889,6 +2048,356 @@ where
                 Err(NeovimError::Api(format!(
                     "Failed to apply LSP workspace edit: {e}"
                 )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_prepare_rename(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<PrepareRenameResult>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0,
+        };
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_prepare_rename.lua"),
+                vec![
+                    Value::from(client_name),
+                    Value::from(
+                        serde_json::to_string(&TextDocumentPositionParams {
+                            text_document,
+                            position,
+                        })
+                        .unwrap(),
+                    ),
+                    Value::from(1000),
+                    Value::from(buffer_id),
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<PrepareRenameResult>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(d) => d.into(),
+                    Err(e) => {
+                        debug!("Failed to parse prepare rename result: {e}");
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse prepare rename result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to prepare rename: {}", e);
+                Err(NeovimError::Api(format!("Failed to prepare rename: {e}")))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_rename(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+        new_name: &str,
+    ) -> Result<Option<WorkspaceEdit>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0,
+        };
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_rename.lua"),
+                vec![
+                    Value::from(client_name),
+                    Value::from(
+                        serde_json::to_string(&RenameRequestParams {
+                            text_document,
+                            position,
+                            new_name: new_name.to_string(),
+                        })
+                        .unwrap(),
+                    ),
+                    Value::from(5000), // Longer timeout for rename operations
+                    Value::from(buffer_id),
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<WorkspaceEdit>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(d) => d.into(),
+                    Err(e) => {
+                        debug!("Failed to parse rename result: {e}");
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse rename result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to rename: {}", e);
+                Err(NeovimError::Api(format!("Failed to rename: {e}")))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_formatting(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        options: FormattingOptions,
+    ) -> Result<Vec<TextEdit>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct DocumentFormattingRequest {
+            text_document: TextDocumentIdentifier,
+            options: FormattingOptions,
+        }
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_formatting.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&DocumentFormattingRequest {
+                            text_document,
+                            options,
+                        })
+                        .unwrap(),
+                    ),
+                    Value::from(1000), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<Vec<TextEdit>>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(d) => {
+                        let rv: Result<Option<Vec<TextEdit>>, NeovimError> = d.into();
+                        rv.map(|x| x.unwrap_or_default())
+                    }
+                    Err(e) => {
+                        debug!("Failed to parse formatting result: {e}");
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse formatting result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to format document: {}", e);
+                Err(NeovimError::Api(format!("Failed to format document: {e}")))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_range_formatting(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        range: Range,
+        options: FormattingOptions,
+    ) -> Result<Vec<TextEdit>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct DocumentRangeFormattingRequest {
+            text_document: TextDocumentIdentifier,
+            range: Range,
+            options: FormattingOptions,
+        }
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_range_formatting.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&DocumentRangeFormattingRequest {
+                            text_document,
+                            range,
+                            options,
+                        })
+                        .unwrap(),
+                    ),
+                    Value::from(1000), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<Vec<TextEdit>>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(d) => {
+                        let rv: Result<Option<Vec<TextEdit>>, NeovimError> = d.into();
+                        rv.map(|x| x.unwrap_or_default())
+                    }
+                    Err(e) => {
+                        debug!("Failed to parse range formatting result: {e}");
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse range formatting result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to format range: {}", e);
+                Err(NeovimError::Api(format!("Failed to format range: {e}")))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_get_organize_imports_actions(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+    ) -> Result<Vec<CodeAction>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        // For document imports organization, we use an zero-value range
+        let range = Range::default();
+
+        // Request code actions with only source.organizeImports filter
+        let context = CodeActionContext {
+            diagnostics: Vec::new(), // No diagnostics needed for organize imports
+            only: Some(vec![CodeActionKind::SourceOrganizeImports]),
+            trigger_kind: None,
+        };
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        // Get buffer ID for Lua execution (needed for some LSP operations)
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0, // Use buffer 0 as fallback for path-based operations
+        };
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_client_get_code_actions.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&CodeActionParams {
+                            text_document,
+                            range,
+                            context,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(1000),        // timeout_ms
+                    Value::from(buffer_id),   // bufnr
+                ],
+            )
+            .await
+        {
+            Ok(actions) => {
+                let actions = serde_json::from_str::<CodeActionResult>(actions.as_str().unwrap())
+                    .map_err(|e| {
+                    NeovimError::Api(format!("Failed to parse code actions: {e}"))
+                })?;
+                debug!("Found {} organize imports actions", actions.result.len());
+                Ok(actions.result)
+            }
+            Err(e) => {
+                debug!("Failed to get organize imports actions: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get organize imports actions: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_apply_text_edits(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        text_edits: Vec<TextEdit>,
+    ) -> Result<(), NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_apply_text_edits.lua"),
+                vec![
+                    Value::from(client_name),
+                    Value::from(serde_json::to_string(&text_edits).map_err(|e| {
+                        NeovimError::Api(format!("Failed to serialize text edits: {e}"))
+                    })?),
+                    Value::from(text_document.uri),
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<()>>(result.as_str().unwrap()) {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!("Failed to parse apply text edits result: {}", e);
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse apply text edits result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to apply text edits: {}", e);
+                Err(NeovimError::Api(format!("Failed to apply text edits: {e}")))
             }
         }
     }

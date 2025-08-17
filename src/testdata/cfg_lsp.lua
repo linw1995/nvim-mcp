@@ -18,3 +18,17 @@ vim.lsp.config["gopls"] = {
     root_markers = { ".root" },
 }
 vim.lsp.enable("gopls")
+
+vim.lsp.config["zls"] = {
+    cmd = { "zls" },
+    filetypes = { "zig" },
+    root_markers = { ".root" },
+}
+vim.lsp.enable("zls")
+
+vim.lsp.config["ts_ls"] = {
+    cmd = { "typescript-language-server", "--stdio" },
+    filetypes = { "typescript", "typescriptreact", "typescript.tsx" },
+    root_markers = { ".root" },
+}
+vim.lsp.enable("ts_ls")

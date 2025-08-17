@@ -68,9 +68,14 @@ pub fn nvim_path() -> &'static str {
 /// Get test data file path
 pub fn get_testdata_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("src/neovim/testdata");
+    path.push("src/testdata");
     path.push(filename);
     path
+}
+
+/// Get test data content
+pub fn get_testdata_content(filename: &str) -> String {
+    std::fs::read_to_string(get_testdata_path(filename)).expect("Failed to read test data file")
 }
 
 /// RAII guard for TCP-based Neovim process cleanup
@@ -166,7 +171,7 @@ pub async fn setup_neovim_instance_advance(
     let listen = format!("{HOST}:{port}");
 
     let mut child = StdCommand::new(nvim_path())
-        .args(["-u", cfg_path, "--headless", "--listen", &listen])
+        .args(["-n", "-u", cfg_path, "--headless", "--listen", &listen])
         .args(
             (!open_file.is_empty())
                 .then_some(vec![open_file])
@@ -207,7 +212,7 @@ pub async fn setup_neovim_instance_socket_advance(
     open_file: &str,
 ) -> std::process::Child {
     let mut child = StdCommand::new(nvim_path())
-        .args(["-u", cfg_path, "--headless", "--listen", socket_path])
+        .args(["-n", "-u", cfg_path, "--headless", "--listen", socket_path])
         .args(
             (!open_file.is_empty())
                 .then_some(vec![open_file])

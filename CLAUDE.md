@@ -7,7 +7,7 @@ with code in this repository.
 
 This is a Rust-based Model Context Protocol (MCP) server that provides AI
 assistants with programmatic access to Neovim instances. The server supports
-both Unix socket/named pipe and TCP connections, implements eleven core MCP
+both Unix socket/named pipe and TCP connections, implements 23 core MCP
 tools for Neovim interaction, and provides diagnostic resources through the
 `nvim-diagnostics://` URI scheme. The project uses Rust 2024 edition and
 focuses on async/concurrent operations with proper error handling throughout.
@@ -80,7 +80,7 @@ The codebase follows a modular architecture with clear separation of concerns:
   - Exposes dynamic tool registration API for connection-scoped and global tools
 
 - **`src/server/tools.rs`**: MCP tool implementations
-  - Implements eighteen MCP tools using the `#[tool]` attribute
+  - Implements 23 MCP tools using the `#[tool]` attribute
   - Contains parameter structs for tool requests
   - Focuses purely on MCP tool logic and protocol implementation
   - Clean separation from core infrastructure
@@ -178,7 +178,7 @@ This modular architecture provides several advantages:
 
 ### Available MCP Tools
 
-The server provides these 18 tools (implemented with `#[tool]` attribute):
+The server provides these 23 tools (implemented with `#[tool]` attribute):
 
 **Connection Management:**
 
@@ -211,6 +211,12 @@ The server provides these 18 tools (implemented with `#[tool]` attribute):
 12. **`lsp_definition`**: Get LSP definition with universal document identification
 13. **`lsp_type_definition`**: Get LSP type definition with universal document identification
 14. **`lsp_implementations`**: Get LSP implementations with universal document identification
+15. **`lsp_declaration`**: Get LSP declaration with universal document identification
+16. **`lsp_rename`**: Rename symbol across workspace using LSP
+17. **`lsp_formatting`**: Format document using LSP with optional auto-apply
+18. **`lsp_range_formatting`**: Format a specific range in a document using LSP
+19. **`lsp_organize_imports`**: Sort and organize imports using LSP with
+    auto-apply by default
 
 ### Universal Document Identifier System
 
@@ -229,7 +235,9 @@ This system enables LSP operations on files that may not be open in Neovim
 buffers, providing
 enhanced flexibility for code analysis and navigation. The universal LSP tools
 (`lsp_code_actions`, `lsp_hover`, `lsp_document_symbols`, `lsp_references`,
-`lsp_definition`, `lsp_type_definition`, `lsp_implementations`) accept any of these
+`lsp_definition`, `lsp_type_definition`, `lsp_implementations`,
+`lsp_declaration`, `lsp_rename`, `lsp_formatting`, `lsp_range_formatting`,
+`lsp_organize_imports`) accept any of these
 document identifier types.
 
 ### MCP Resources

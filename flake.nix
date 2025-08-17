@@ -65,8 +65,15 @@
               # Integration tests
               neovim-unwrapped
               lua-language-server
+
               go
               gopls
+
+              zig
+              zls
+
+              typescript
+              typescript-language-server
             ];
             shellHook = ''
               # Unset SOURCE_DATE_EPOCH to prevent reproducible build timestamps during development.
