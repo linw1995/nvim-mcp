@@ -37,6 +37,8 @@ nix develop .
 - `--log-file <PATH>`: Log file path (defaults to stderr)
 - `--log-level <LEVEL>`: Log level (trace, debug, info, warn, error;
   defaults to info)
+- `--socket-path <PATH>`: Directory for socket files (defaults to
+  `/tmp` on Unix-like systems, `%TEMP%` on Windows)
 
 ### Testing
 

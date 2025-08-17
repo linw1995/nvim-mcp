@@ -6,7 +6,7 @@ use rmcp::{
 };
 use tracing::instrument;
 
-use super::core::{NeovimMcpServer, find_get_all_targets};
+use super::core::NeovimMcpServer;
 use crate::neovim::{
     CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient, NeovimClientTrait, Position,
     PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
@@ -328,7 +328,7 @@ impl NeovimMcpServer {
     #[tool(description = "Get available Neovim targets")]
     #[instrument(skip(self))]
     pub async fn get_targets(&self) -> Result<CallToolResult, McpError> {
-        let targets = find_get_all_targets();
+        let targets = super::core::find_get_all_targets(&self.socket_path);
         if targets.is_empty() {
             return Err(McpError::invalid_request(
                 "No Neovim targets found".to_string(),

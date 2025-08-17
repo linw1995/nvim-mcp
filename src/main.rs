@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::OnceLock};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use nvim_mcp::NeovimMcpServer;
+use nvim_mcp::{ConfigError, NeovimMcpServer, ServerConfig};
 
 static LONG_VERSION: OnceLock<String> = OnceLock::new();
 
@@ -38,6 +38,10 @@ struct Cli {
     /// Log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Directory for socket files. Defaults to platform-specific location
+    #[arg(long)]
+    socket_path: Option<String>,
 }
 
 #[tokio::main]
@@ -47,7 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing/logging
     let env_filter = EnvFilter::from_default_env().add_directive(cli.log_level.parse()?);
 
-    let _guard = if let Some(log_file) = cli.log_file {
+    let log_file_clone = cli.log_file.clone();
+    let _guard = if let Some(log_file) = log_file_clone {
         // Log to file
         let file_appender = tracing_appender::rolling::never(
             log_file
@@ -79,8 +84,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
+    // Create server configuration with lazy evaluation
+    let config = ServerConfig::new(cli.socket_path, cli.log_file, cli.log_level)
+        .map_err(|e: ConfigError| format!("Configuration error: {}", e))?;
+
     info!("Starting nvim-mcp Neovim server");
-    let server = NeovimMcpServer::new();
+    let server = NeovimMcpServer::new(config.socket_path);
     let service = server.serve(stdio()).await.inspect_err(|e| {
         error!("Error starting Neovim server: {}", e);
     })?;

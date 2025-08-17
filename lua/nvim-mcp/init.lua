@@ -34,6 +34,7 @@ local function generate_pipe_path()
     local escaped_path = escape_path(git_root)
     local pid = vim.fn.getpid()
     local temp_dir = vim.fn.has("win32") == 1 and os.getenv("TEMP") or "/tmp"
+    vim.fn.mkdir(temp_dir, "p")
 
     return string.format("%s/nvim-mcp.%s.%d.sock", temp_dir, escaped_path, pid)
 end
@@ -52,6 +53,11 @@ function M.setup(opts)
 
     -- Start Neovim RPC server on the pipe
     vim.fn.serverstart(pipe_path)
+
+    -- Set proper permissions on Unix-like systems
+    if vim.fn.has("win32") == 0 then
+        vim.uv.fs_chmod(pipe_path, tonumber("700", 8))
+    end
 end
 
 return M
