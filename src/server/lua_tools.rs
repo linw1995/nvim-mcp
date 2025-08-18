@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use futures::future::BoxFuture;
 use rmcp::{
     ErrorData as McpError,
     model::{CallToolResult, Content},
@@ -12,16 +10,6 @@ use super::core::NeovimMcpServer;
 use super::hybrid_router::DynamicTool;
 use crate::neovim::{NeovimClientTrait, NeovimError};
 
-// Type alias for the dynamic tool handler function
-type LuaToolHandler = Arc<
-    dyn Fn(
-            &NeovimMcpServer,
-            serde_json::Value,
-        ) -> BoxFuture<'static, Result<CallToolResult, McpError>>
-        + Send
-        + Sync,
->;
-
 // Core structures for Lua tool integration
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct LuaToolConfig {
@@ -30,7 +18,47 @@ pub struct LuaToolConfig {
     pub input_schema: serde_json::Value,
 }
 
-#[allow(dead_code)]
+#[async_trait::async_trait]
+impl DynamicTool for LuaToolConfig {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn input_schema(&self) -> &serde_json::Value {
+        &self.input_schema
+    }
+    async fn call(
+        &self,
+        client: dashmap::mapref::one::Ref<'_, String, Box<dyn NeovimClientTrait + Send>>,
+        arguments: serde_json::Value,
+    ) -> Result<CallToolResult, McpError> {
+        let code = &format!(
+            "return require('nvim-mcp').execute_tool('{}', vim.json.decode({:?}))",
+            self.name,
+            serde_json::to_string(&arguments).unwrap_or_default()
+        );
+        client
+            .execute_lua(code)
+            .await
+            .map_err(|e| {
+                McpError::internal_error(
+                    format!("Failed to execute Lua tool '{}': {}", self.name, e),
+                    None,
+                )
+            })
+            .and_then(|result| {
+                // Convert nvim_rs::Value to serde_json::Value
+                let json_result = convert_nvim_value_to_json(result)
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                convert_lua_response_to_mcp(json_result)
+            })
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct LuaMcpResponse {
     pub content: Vec<LuaMcpContent>,
@@ -40,22 +68,21 @@ pub struct LuaMcpResponse {
     pub meta: Option<LuaMcpMeta>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct LuaMcpContent {
     #[serde(rename = "type")]
     pub content_type: String,
     pub text: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize)]
 pub struct LuaMcpMeta {
     pub error: Option<LuaErrorInfo>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct LuaErrorInfo {
     pub code: String,
     pub message: String,
@@ -63,7 +90,6 @@ pub struct LuaErrorInfo {
 }
 
 // PATTERN: Simple validation using jsonschema crate
-#[allow(dead_code)]
 pub struct LuaToolValidator {
     schema: serde_json::Value,
 }
@@ -172,34 +198,7 @@ fn convert_nvim_value_to_json(nvim_value: rmpv::Value) -> Result<serde_json::Val
     }
 }
 
-// CORE FUNCTION: Execute Lua tool with proper error handling
-#[allow(dead_code)]
-#[instrument(skip(server, arguments))]
-pub async fn execute_lua_tool(
-    server: &NeovimMcpServer,
-    connection_id: &str,
-    tool_name: &str,
-    arguments: serde_json::Value,
-) -> Result<CallToolResult, McpError> {
-    let client = server.get_connection(connection_id)?;
-
-    // CRITICAL: Use vim.json.encode for proper serialization
-    let args_json = serde_json::to_string(&arguments).map_err(|e| {
-        McpError::internal_error(format!("Failed to serialize arguments: {}", e), None)
-    })?;
-
-    let lua_code = format!(
-        "return require('nvim-mcp').execute_tool('{}', {})",
-        tool_name, args_json
-    );
-
-    let result = client.execute_lua(&lua_code).await?;
-    let json_result = convert_nvim_value_to_json(result)?;
-    convert_lua_response_to_mcp(json_result)
-}
-
 // CONVERSION: Transform Lua MCP response to Rust CallToolResult
-#[allow(dead_code)]
 fn convert_lua_response_to_mcp(lua_result: serde_json::Value) -> Result<CallToolResult, McpError> {
     let lua_response: LuaMcpResponse = serde_json::from_value(lua_result).map_err(|e| {
         McpError::internal_error(format!("Failed to parse Lua response: {}", e), None)
@@ -224,25 +223,6 @@ fn convert_lua_response_to_mcp(lua_result: serde_json::Value) -> Result<CallTool
     Ok(CallToolResult::success(content))
 }
 
-// Helper function to create a handler for a Lua tool
-fn create_lua_tool_handler(tool_name: String, connection_id: String) -> LuaToolHandler {
-    Arc::new(move |_server, _arguments| {
-        let tool_name = tool_name.clone();
-        let connection_id = connection_id.clone();
-
-        // For now, return an error indicating this is not yet implemented
-        Box::pin(async move {
-            Err(McpError::internal_error(
-                format!(
-                    "Lua tool '{}' for connection '{}' not yet fully implemented",
-                    tool_name, connection_id
-                ),
-                None,
-            ))
-        })
-    })
-}
-
 // Helper function to register discovered Lua tools as dynamic tools
 #[instrument(skip(server, client))]
 pub async fn discover_and_register_lua_tools(
@@ -258,17 +238,7 @@ pub async fn discover_and_register_lua_tools(
     let discovered_tools = discover_lua_tools(client).await?;
 
     for (tool_name, tool_config) in discovered_tools {
-        let tool_name_for_handler = tool_name.clone();
-        let connection_id_for_handler = connection_id.to_string();
-
-        let dynamic_tool = DynamicTool {
-            name: tool_name.clone(),
-            description: tool_config.description.clone(),
-            input_schema: tool_config.input_schema,
-            handler: create_lua_tool_handler(tool_name_for_handler, connection_id_for_handler),
-        };
-
-        server.register_dynamic_tool(connection_id, dynamic_tool)?;
+        server.register_dynamic_tool(connection_id, Box::new(tool_config))?;
         debug!(
             "Registered Lua tool '{}' for connection '{}'",
             tool_name, connection_id
