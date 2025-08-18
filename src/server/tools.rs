@@ -7,6 +7,7 @@ use rmcp::{
 use tracing::instrument;
 
 use super::core::{NeovimMcpServer, find_get_all_targets};
+use super::lua_tools;
 use crate::neovim::{
     CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient, NeovimClientTrait, Position,
     PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
@@ -356,6 +357,17 @@ impl NeovimMcpServer {
         client.connect_path(&path).await?;
         client.setup_diagnostics_changed_autocmd().await?;
 
+        // Discover and register Lua tools for this connection
+        if let Err(e) =
+            lua_tools::discover_and_register_lua_tools(self, &connection_id, &client).await
+        {
+            tracing::warn!(
+                "Failed to discover Lua tools for connection '{}': {}",
+                connection_id,
+                e
+            );
+        }
+
         self.nvim_clients
             .insert(connection_id.clone(), Box::new(client));
 
@@ -384,6 +396,17 @@ impl NeovimMcpServer {
         let mut client = NeovimClient::new();
         client.connect_tcp(&address).await?;
         client.setup_diagnostics_changed_autocmd().await?;
+
+        // Discover and register Lua tools for this connection
+        if let Err(e) =
+            lua_tools::discover_and_register_lua_tools(self, &connection_id, &client).await
+        {
+            tracing::warn!(
+                "Failed to discover Lua tools for connection '{}': {}",
+                connection_id,
+                e
+            );
+        }
 
         self.nvim_clients
             .insert(connection_id.clone(), Box::new(client));

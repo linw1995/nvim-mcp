@@ -218,34 +218,6 @@ impl HybridToolRouter {
             }
         }
 
-        // Add global dynamic tools
-        for tool_name_entry in self.dynamic_tools.iter() {
-            let tool_name = tool_name_entry.key();
-            let connections_map = tool_name_entry.value();
-
-            if let Some(global_tool) = connections_map.get("__global__") {
-                tools.push(Tool {
-                    name: tool_name.clone().into(),
-                    description: Some(global_tool.description.clone().into()),
-                    input_schema: Arc::new(
-                        global_tool
-                            .input_schema
-                            .as_object()
-                            .unwrap_or(&serde_json::Map::new())
-                            .clone(),
-                    ),
-                    output_schema: None,
-                    annotations: Some(ToolAnnotations {
-                        title: Some("Global Dynamic".to_string()),
-                        read_only_hint: Some(false),
-                        destructive_hint: Some(false),
-                        idempotent_hint: Some(false),
-                        open_world_hint: Some(false),
-                    }),
-                });
-            }
-        }
-
         tools
     }
 
@@ -268,7 +240,15 @@ impl HybridToolRouter {
             let connection_id = arguments
                 .get("connection_id")
                 .and_then(|v| v.as_str())
-                .unwrap_or("__global__"); // Default to global if no connection_id
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!(
+                            "Dynamic tool '{}' requires connection_id parameter",
+                            tool_name
+                        ),
+                        None,
+                    )
+                })?;
 
             if let Some(dynamic_tool) = tools_for_name.get(connection_id) {
                 debug!(
@@ -276,9 +256,6 @@ impl HybridToolRouter {
                     tool_name, connection_id
                 );
                 return (dynamic_tool.handler)(server, arguments).await;
-            } else if let Some(global_tool) = tools_for_name.get("__global__") {
-                debug!("Executing global dynamic tool: {}", tool_name);
-                return (global_tool.handler)(server, arguments).await;
             } else {
                 return Err(McpError::invalid_request(
                     format!(
@@ -346,19 +323,6 @@ impl HybridToolRouter {
                 {
                     tools_info.push((tool.name.clone(), tool.description.clone(), false));
                 }
-            }
-        }
-
-        // Add global dynamic tools
-        for tool_name_entry in self.dynamic_tools.iter() {
-            let connections_map = tool_name_entry.value();
-
-            if let Some(global_tool) = connections_map.get("__global__") {
-                tools_info.push((
-                    global_tool.name.clone(),
-                    global_tool.description.clone(),
-                    false,
-                ));
             }
         }
 

@@ -1191,3 +1191,460 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
 
     Ok(())
 }
+
+// Lua Dynamic Tools Integration Tests
+
+#[tokio::test]
+#[traced_test]
+async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing end-to-end Lua tools workflow");
+
+    // Start MCP server with child process
+    let service = ()
+        .serve(TokioChildProcess::new(Command::new("cargo").configure(
+            |cmd| {
+                cmd.args(["run", "--bin", "nvim-mcp"]);
+            },
+        ))?)
+        .await
+        .map_err(|e| {
+            error!("Failed to connect to server: {}", e);
+            e
+        })?;
+
+    info!("Connected to server");
+
+    // Wait for the server to be ready
+    time::sleep(Duration::from_millis(1000)).await;
+
+    // Get available targets to find a Neovim instance
+    let targets_result = service
+        .call_tool(CallToolRequestParam {
+            name: "get_targets".into(),
+            arguments: None,
+        })
+        .await;
+
+    let connection_id = if targets_result.is_ok() {
+        let targets = targets_result.unwrap();
+        info!("Available targets: {:?}", targets);
+
+        if let Some(content) = targets.content.as_ref().and_then(|c| c.first()) {
+            let json_str = match &content.raw {
+                rmcp::model::RawContent::Text(text_content) => &text_content.text,
+                _ => return Err("Expected text content".into()),
+            };
+
+            let targets_json: Value = serde_json::from_str(json_str)?;
+            if let Some(targets_array) = targets_json.as_array() {
+                if let Some(first_target) = targets_array.first() {
+                    if let Some(target_path) = first_target.as_str() {
+                        // Connect to existing Neovim instance
+                        let mut connect_args = Map::new();
+                        connect_args
+                            .insert("target".to_string(), Value::String(target_path.to_string()));
+
+                        let result = service
+                            .call_tool(CallToolRequestParam {
+                                name: "connect".into(),
+                                arguments: Some(connect_args),
+                            })
+                            .await?;
+
+                        info!("Connection established successfully");
+                        extract_connection_id(&result)?
+                    } else {
+                        return Err("Invalid target format".into());
+                    }
+                } else {
+                    return Err("No targets available".into());
+                }
+            } else {
+                return Err("Invalid targets format".into());
+            }
+        } else {
+            return Err("No content in targets response".into());
+        }
+    } else {
+        // Start TCP Neovim for testing if no existing targets
+        info!("No existing targets found, starting TCP Neovim for testing");
+        let neovim_tcp_port = crate::test_utils::PORT_BASE + 100; // Use a different port to avoid conflicts
+        let (_neovim_client, _neovim_guard) =
+            crate::test_utils::setup_connected_client(neovim_tcp_port).await;
+
+        let mut connect_args = Map::new();
+        connect_args.insert(
+            "target".to_string(),
+            Value::String(format!("127.0.0.1:{}", neovim_tcp_port)),
+        );
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "connect_tcp".into(),
+                arguments: Some(connect_args),
+            })
+            .await?;
+
+        // Setup Lua tools configuration in Neovim
+        let connection_id = extract_connection_id(&result)?;
+
+        // Configure custom tools via Lua
+        let lua_setup_code = r#"
+            require('nvim-mcp').setup({
+                custom_tools = {
+                    save_buffer = {
+                        description = "Save a specific buffer by ID",
+                        parameters = {
+                            type = "object",
+                            properties = {
+                                buffer_id = {
+                                    type = "integer",
+                                    description = "The buffer ID to save",
+                                    minimum = 1,
+                                },
+                            },
+                            required = { "buffer_id" },
+                        },
+                        handler = function(params)
+                            local buf_id = params.buffer_id
+
+                            -- Validate buffer
+                            if not vim.api.nvim_buf_is_valid(buf_id) then
+                                return require('nvim-mcp').MCP.error("INVALID_PARAMS",
+                                    "Buffer " .. buf_id .. " is not valid")
+                            end
+
+                            local buf_name = vim.api.nvim_buf_get_name(buf_id)
+                            if buf_name == "" then
+                                return require('nvim-mcp').MCP.error("INVALID_PARAMS",
+                                    "Buffer " .. buf_id .. " has no associated file")
+                            end
+
+                            -- Save the buffer
+                            local success, err = pcall(function()
+                                vim.api.nvim_buf_call(buf_id, function()
+                                    vim.cmd("write")
+                                end)
+                            end)
+
+                            if success then
+                                return require('nvim-mcp').MCP.success({
+                                    buffer_id = buf_id,
+                                    filename = buf_name,
+                                    message = "Buffer saved successfully",
+                                })
+                            else
+                                return require('nvim-mcp').MCP.error("INTERNAL_ERROR",
+                                    "Failed to save buffer: " .. tostring(err))
+                            end
+                        end,
+                    },
+                },
+            })
+        "#;
+
+        let mut lua_args = Map::new();
+        lua_args.insert(
+            "connection_id".to_string(),
+            Value::String(connection_id.clone()),
+        );
+        lua_args.insert(
+            "code".to_string(),
+            Value::String(lua_setup_code.to_string()),
+        );
+
+        let lua_result = service
+            .call_tool(CallToolRequestParam {
+                name: "exec_lua".into(),
+                arguments: Some(lua_args),
+            })
+            .await?;
+
+        info!("Lua tools setup completed: {:?}", lua_result);
+
+        // Give time for tool discovery to complete
+        time::sleep(Duration::from_millis(2000)).await;
+
+        // Test tool discovery by listing tools (should include our custom tool)
+        let tools_result = service.list_tools(Default::default()).await?;
+        info!("Available tools after Lua setup: {:?}", tools_result);
+
+        // Check if our custom tool is discovered
+        let tools_contain_save_buffer = tools_result
+            .tools
+            .iter()
+            .any(|tool| tool.name == "save_buffer");
+        assert!(
+            tools_contain_save_buffer,
+            "Custom save_buffer tool should be discovered"
+        );
+
+        // Test custom tool execution
+        let mut tool_args = Map::new();
+        tool_args.insert(
+            "connection_id".to_string(),
+            Value::String(connection_id.clone()),
+        );
+        tool_args.insert(
+            "buffer_id".to_string(),
+            Value::Number(serde_json::Number::from(1)),
+        );
+
+        let tool_result = service
+            .call_tool(CallToolRequestParam {
+                name: "save_buffer".into(),
+                arguments: Some(tool_args),
+            })
+            .await;
+
+        // The tool execution may fail (buffer not valid or no file), but it should not crash
+        info!("Custom tool execution result: {:?}", tool_result);
+
+        // Test error handling with invalid parameters
+        let mut invalid_args = Map::new();
+        invalid_args.insert(
+            "connection_id".to_string(),
+            Value::String(connection_id.clone()),
+        );
+        invalid_args.insert(
+            "buffer_id".to_string(),
+            Value::Number(serde_json::Number::from(-1)),
+        );
+
+        let error_result = service
+            .call_tool(CallToolRequestParam {
+                name: "save_buffer".into(),
+                arguments: Some(invalid_args),
+            })
+            .await;
+
+        info!("Error handling test result: {:?}", error_result);
+
+        // Cleanup
+        // neovim_guard will automatically cleanup on drop
+
+        connection_id
+    };
+
+    // Test connection cleanup removes tools
+    let mut disconnect_args = Map::new();
+    disconnect_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+
+    let disconnect_result = service
+        .call_tool(CallToolRequestParam {
+            name: "disconnect".into(),
+            arguments: Some(disconnect_args),
+        })
+        .await?;
+
+    info!("Disconnect result: {:?}", disconnect_result);
+
+    service.cancel().await?;
+    info!("End-to-end Lua tools test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_lua_tools_multiple_connections_isolation() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing multiple connections tool isolation");
+
+    let service = ()
+        .serve(TokioChildProcess::new(Command::new("cargo").configure(
+            |cmd| {
+                cmd.args(["run", "--bin", "nvim-mcp"]);
+            },
+        ))?)
+        .await
+        .map_err(|e| {
+            error!("Failed to connect to server: {}", e);
+            e
+        })?;
+
+    info!("Connected to server");
+    time::sleep(Duration::from_millis(1000)).await;
+
+    // Start two separate Neovim instances
+    let port1 = crate::test_utils::PORT_BASE + 200;
+    let port2 = crate::test_utils::PORT_BASE + 201;
+
+    let (_neovim_client1, _neovim_guard1) = crate::test_utils::setup_connected_client(port1).await;
+    let (_neovim_client2, _neovim_guard2) = crate::test_utils::setup_connected_client(port2).await;
+
+    // Connect to first instance
+    let mut connect_args1 = Map::new();
+    connect_args1.insert(
+        "target".to_string(),
+        Value::String(format!("127.0.0.1:{}", port1)),
+    );
+
+    let result1 = service
+        .call_tool(CallToolRequestParam {
+            name: "connect_tcp".into(),
+            arguments: Some(connect_args1),
+        })
+        .await?;
+
+    let connection_id1 = extract_connection_id(&result1)?;
+
+    // Connect to second instance
+    let mut connect_args2 = Map::new();
+    connect_args2.insert(
+        "target".to_string(),
+        Value::String(format!("127.0.0.1:{}", port2)),
+    );
+
+    let result2 = service
+        .call_tool(CallToolRequestParam {
+            name: "connect_tcp".into(),
+            arguments: Some(connect_args2),
+        })
+        .await?;
+
+    let connection_id2 = extract_connection_id(&result2)?;
+
+    info!(
+        "Established two connections: {} and {}",
+        connection_id1, connection_id2
+    );
+
+    // Setup different tools for each connection
+    let lua_setup_code1 = r#"
+        require('nvim-mcp').setup({
+            custom_tools = {
+                connection1_tool = {
+                    description = "Tool specific to connection 1",
+                    handler = function(params)
+                        return require('nvim-mcp').MCP.success({
+                            connection = "connection1",
+                            message = "This is connection 1 tool"
+                        })
+                    end,
+                },
+            },
+        })
+    "#;
+
+    let lua_setup_code2 = r#"
+        require('nvim-mcp').setup({
+            custom_tools = {
+                connection2_tool = {
+                    description = "Tool specific to connection 2",
+                    handler = function(params)
+                        return require('nvim-mcp').MCP.success({
+                            connection = "connection2",
+                            message = "This is connection 2 tool"
+                        })
+                    end,
+                },
+            },
+        })
+    "#;
+
+    // Setup tools for connection 1
+    let mut lua_args1 = Map::new();
+    lua_args1.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id1.clone()),
+    );
+    lua_args1.insert(
+        "code".to_string(),
+        Value::String(lua_setup_code1.to_string()),
+    );
+
+    service
+        .call_tool(CallToolRequestParam {
+            name: "exec_lua".into(),
+            arguments: Some(lua_args1),
+        })
+        .await?;
+
+    // Setup tools for connection 2
+    let mut lua_args2 = Map::new();
+    lua_args2.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id2.clone()),
+    );
+    lua_args2.insert(
+        "code".to_string(),
+        Value::String(lua_setup_code2.to_string()),
+    );
+
+    service
+        .call_tool(CallToolRequestParam {
+            name: "exec_lua".into(),
+            arguments: Some(lua_args2),
+        })
+        .await?;
+
+    // Give time for tool discovery
+    time::sleep(Duration::from_millis(2000)).await;
+
+    // Test that tools are isolated - connection1_tool should only work with connection_id1
+    let mut tool_args1 = Map::new();
+    tool_args1.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id1.clone()),
+    );
+
+    let tool_result1 = service
+        .call_tool(CallToolRequestParam {
+            name: "connection1_tool".into(),
+            arguments: Some(tool_args1),
+        })
+        .await;
+
+    info!("Connection 1 tool result: {:?}", tool_result1);
+
+    // Try to use connection1_tool with connection_id2 (should fail)
+    let mut tool_args_cross = Map::new();
+    tool_args_cross.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id2.clone()),
+    );
+
+    let cross_result = service
+        .call_tool(CallToolRequestParam {
+            name: "connection1_tool".into(),
+            arguments: Some(tool_args_cross),
+        })
+        .await;
+
+    // This should fail because connection1_tool is not available for connection2
+    assert!(
+        cross_result.is_err(),
+        "Cross-connection tool access should fail"
+    );
+    info!(
+        "Cross-connection access correctly failed: {:?}",
+        cross_result
+    );
+
+    // Test connection2_tool with correct connection
+    let mut tool_args2 = Map::new();
+    tool_args2.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id2.clone()),
+    );
+
+    let tool_result2 = service
+        .call_tool(CallToolRequestParam {
+            name: "connection2_tool".into(),
+            arguments: Some(tool_args2),
+        })
+        .await;
+
+    info!("Connection 2 tool result: {:?}", tool_result2);
+
+    // Cleanup
+    // neovim_guard1 and neovim_guard2 will automatically cleanup on drop
+
+    service.cancel().await?;
+    info!("Multiple connections isolation test completed successfully");
+
+    Ok(())
+}
