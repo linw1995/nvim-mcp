@@ -92,6 +92,15 @@ The codebase follows a modular architecture with clear separation of concerns:
   - Uses lock-free concurrent data structures for high performance
   - Enables extensibility while maintaining backwards compatibility
 
+- **`src/server/lua_tools.rs`**: Lua custom tool integration system
+  - Implements `LuaToolConfig` structure for Lua-defined tool configuration
+  - Provides `discover_lua_tools()` function for automatic tool discovery from Neovim
+  - Implements `LuaToolValidator` for JSON Schema parameter validation
+  - Handles conversion between Neovim msgpack values and JSON for seamless integration
+  - Provides `discover_and_register_lua_tools()` for automatic registration
+    during connection setup
+  - Implements error handling and response conversion for Lua MCP responses
+
 - **`src/server/resources.rs`**: MCP resource handlers
   - Implements `ServerHandler` trait for MCP capabilities
   - Uses `HybridToolRouter` for dynamic tool discovery and execution
@@ -270,7 +279,9 @@ BLAKE3 hashes of the target string for consistent identification.
 
 ## Dynamic Tool System
 
-The server includes a sophisticated dynamic tool registration system through `HybridToolRouter`:
+The server includes a sophisticated dynamic tool registration system through
+`HybridToolRouter` with comprehensive Lua integration for user-extensible
+custom tools:
 
 ### HybridToolRouter Architecture
 
@@ -293,13 +304,59 @@ pub struct HybridToolRouter {
     /// Static tools from #[tool_router] macro
     static_router: ToolRouter<NeovimMcpServer>,
 
-    /// Dynamic tools using nested structure: tool_name -> connection_id -> tool
-    dynamic_tools: Arc<DashMap<String, DashMap<String, DynamicTool>>>,
+    /// Dynamic tools using nested structure:
+    /// tool_name -> connection_id -> tool
+    dynamic_tools: Arc<DashMap<String, DashMap<String, DynamicToolBox>>>,
 
     /// Connection-specific tool mapping: connection_id -> tool_names
     connection_tools: Arc<DashMap<String, HashSet<String>>>,
 }
 ```
+
+### Lua Dynamic Tools System
+
+**User-Extensible Tool Registration:**
+
+The system now supports custom tool registration through Neovim
+configuration using Lua functions:
+
+```lua
+-- In your Neovim configuration (init.lua or plugin config)
+require("nvim-mcp").setup({
+    custom_tools = {
+        save_buffer = {
+            description = "Save a specific buffer by ID",
+            parameters = {
+                type = "object",
+                properties = {
+                    buffer_id = {
+                        type = "integer",
+                        description = "The buffer ID to save",
+                        minimum = 1,
+                    },
+                },
+                required = { "buffer_id" },
+            },
+            handler = function(params)
+                -- Tool implementation using MCP helpers
+                return MCP.success({
+                    buffer_id = params.buffer_id,
+                    message = "Buffer saved successfully",
+                })
+            end,
+        },
+    },
+})
+```
+
+**MCP Helper Functions:**
+
+The Lua plugin provides helper functions for creating compatible MCP responses:
+
+- `MCP.success(data)`: Create successful tool response
+- `MCP.error(code, message, data)`: Create error response
+- `MCP.text(text)`: Create plain text response
+- `MCP.json(data)`: Create JSON response
 
 ### Dynamic Tool Registration
 
@@ -312,9 +369,18 @@ pub struct HybridToolRouter {
 
 **Tool Lifecycle Management:**
 
-1. **Registration**: Tools registered during connection setup or runtime
-2. **Execution**: Routed through `HybridToolRouter` with priority: dynamic → static
-3. **Cleanup**: Connection-scoped tools automatically removed on disconnect
+1. **Configuration**: Users define tools in Neovim setup with Lua
+   handlers
+2. **Discovery**: MCP server queries Neovim for registered tools via
+   `get_registered_tools()`
+3. **Registration**: Tools are registered in `HybridToolRouter` during
+   connection setup
+4. **Validation**: JSON Schema validation using `jsonschema` crate for
+   parameter checking
+5. **Execution**: Routed through `HybridToolRouter` with priority:
+   dynamic → static
+6. **Cleanup**: Connection-scoped tools automatically removed on
+   disconnect
 
 ### Integration with Core Server
 
@@ -326,19 +392,38 @@ impl NeovimMcpServer {
     pub fn register_dynamic_tool(
         &self,
         connection_id: &str,
-        tool: DynamicTool,
+        tool: DynamicToolBox,
     ) -> Result<(), McpError>
-
 
     /// Remove all dynamic tools for a connection
     pub fn unregister_dynamic_tools(&self, connection_id: &str)
 }
 ```
 
+**Lua Tool Integration:**
+
+The server automatically discovers and registers Lua-defined tools through
+the new `lua_tools.rs` module:
+
+- **`LuaToolConfig`**: Structure for Lua tool configuration and execution
+- **`discover_lua_tools()`**: Queries Neovim for configured custom tools
+- **`discover_and_register_lua_tools()`**: Automatic registration during
+  connection setup
+- **JSON Schema Validation**: Parameter validation using `jsonschema` crate
+- **Response Conversion**: Seamless conversion between Lua MCP responses
+  and Rust `CallToolResult`
+
 **Benefits:**
 
-- **Extensibility**: Add new tools without code changes or recompilation
-- **Modularity**: Connection-specific functionality remains isolated
+- **User Extensibility**: Users can define custom tools without modifying
+  server code
+- **Project-Specific Workflows**: Different Neovim instances can have
+  different tool sets
+- **Automatic Discovery**: Tools are discovered and registered during
+  connection setup
+- **Parameter Validation**: Robust input validation using JSON Schema
+- **Error Handling**: Structured error reporting with safe Lua execution
+- **Connection Isolation**: Tools are scoped to specific connections
 - **Performance**: Efficient tool routing with minimal overhead
 - **Reliability**: Automatic cleanup prevents resource leaks
 
@@ -357,13 +442,20 @@ impl NeovimMcpServer {
 - **`regex`**: Pattern matching for connection-scoped resource URI parsing
 - **`blake3`**: Fast, deterministic hashing for connection ID generation
 
+**Dynamic Tool System Dependencies:**
+
+- **`jsonschema`**: JSON Schema validation for Lua custom tool parameters
+- **`serde_json`**: JSON serialization/deserialization with enhanced
+  support for Lua integration
+- **`async-trait`**: Async trait support for dynamic tool execution
+
 **Testing and Development Dependencies:**
 
 - **`tempfile`**: Temporary file and directory management for integration tests
-- **`serde_json`**: JSON serialization/deserialization with enhanced Claude
-  Code compatibility
 - **Enhanced deserialization**: Support for both string and struct formats
   in CodeAction and WorkspaceEdit types
+- **Lua tool testing**: Integration tests for custom tool registration
+  and execution
 
 ## Testing Architecture
 
@@ -489,12 +581,37 @@ standard rustfmt conventions.
 
 ## Neovim Lua Plugin
 
-The project includes a Neovim Lua plugin at `lua/nvim-mcp/init.lua` that:
+The project includes a comprehensive Neovim Lua plugin at
+`lua/nvim-mcp/init.lua` that:
+
+**Core RPC Functionality:**
 
 - Automatically starts a Neovim RPC server on a Unix socket/named pipe
 - Generates unique pipe paths based on git root and process ID
 - Provides a `setup()` function for initialization
 - Enables seamless MCP server connection without manual TCP setup
 
+**Custom Tool Registration:**
+
+- Supports user-defined custom tools through `custom_tools` configuration
+- Maintains a global tool registry (`_tool_registry`) for configured tools
+- Provides `get_registered_tools()` API for MCP server tool discovery
+- Implements `execute_tool()` API for safe tool execution with error handling
+
+**MCP Helper Functions:**
+
+- `MCP.success(data)`: Create successful tool responses
+- `MCP.error(code, message, data)`: Create structured error responses
+- `MCP.text(text)`: Create plain text responses
+- `MCP.json(data)`: Create JSON responses
+
+**Tool Management Features:**
+
+- Automatic tool validation during setup
+- Safe tool execution using `pcall()` for error handling
+- Structured error reporting with MCP-compatible format
+- Connection-scoped tool isolation
+
 This eliminates the need to manually start Neovim with `--listen` for MCP
-server connections.
+server connections and enables users to define project-specific custom tools
+through their Neovim configuration.

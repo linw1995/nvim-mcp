@@ -71,3 +71,19 @@ The nvim-mcp project evolved through four major phases, each documented as a PRP
   - Universal MCP tools with `DocumentIdentifier` support
 - **Status**: ✅ **Implemented** - Current production architecture
 - **Dependencies**: Requires Phase 4 (multi-connection architecture) for proper operation
+
+### Phase 6: Lua Dynamic Tools System (August 2025)
+
+**[lua_dynamic_tools](./lua_dynamic_tools.md)** |
+**[STARTER](./lua_dynamic_tools.STARTER.md)** _(August 2025)_
+
+- **Goal**: User-extensible custom tool registration through Neovim configuration
+- **Key Features**:
+  - Lua-based custom tool definition via `setup({ custom_tools = {...} })`
+  - Automatic tool discovery and registration using existing `HybridToolRouter`
+  - Connection-scoped tool isolation and lifecycle management
+  - JSON Schema validation for robust parameter checking
+  - Project-specific workflow automation capabilities
+- **Status**: 🚧 **In Development** - Extending dynamic tool infrastructure
+- **Dependencies**: Requires Phase 4 (multi-connection) and Phase 5
+  (universal document ID) for complete functionality
