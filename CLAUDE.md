@@ -9,8 +9,10 @@ This is a Rust-based Model Context Protocol (MCP) server that provides AI
 assistants with programmatic access to Neovim instances. The server supports
 both Unix socket/named pipe and TCP connections, implements 23 core MCP
 tools for Neovim interaction, and provides diagnostic resources through the
-`nvim-diagnostics://` URI scheme. The project uses Rust 2024 edition and
-focuses on async/concurrent operations with proper error handling throughout.
+`nvim-diagnostics://` URI scheme. The server now supports multiple transport
+modes: stdio (default), and HTTP server for web-based integrations.
+The project uses Rust 2024 edition and focuses on async/concurrent operations
+with proper error handling throughout.
 
 ## Development Commands
 
@@ -21,8 +23,21 @@ focuses on async/concurrent operations with proper error handling throughout.
 cargo build
 cargo run
 
+# Auto-connect to current project Neovim instances
+cargo run -- --connect auto
+
+# Connect to specific target
+cargo run -- --connect 127.0.0.1:6666
+cargo run -- --connect /tmp/nvim.sock
+
 # With custom logging options
 cargo run -- --log-file ./nvim-mcp.log --log-level debug
+
+# HTTP server mode with auto-connection
+cargo run -- --http-port 8080 --connect auto
+
+# HTTP server mode with custom bind address
+cargo run -- --http-port 8080 --http-host 0.0.0.0
 
 # Production build and run
 cargo build --release
@@ -34,9 +49,15 @@ nix develop .
 
 **CLI Options:**
 
+- `--connect <MODE>`: Connection mode (defaults to manual)
+  - `manual`: Traditional workflow using get_targets and connect tools
+  - `auto`: Automatically connect to all project-associated Neovim instances
+  - Specific target: Direct connection to TCP address or socket path
 - `--log-file <PATH>`: Log file path (defaults to stderr)
 - `--log-level <LEVEL>`: Log level (trace, debug, info, warn, error;
   defaults to info)
+- `--http-port <PORT>`: Enable HTTP server mode on the specified port
+- `--http-host <HOST>`: HTTP server bind address (defaults to 127.0.0.1)
 
 ### Testing
 
@@ -137,7 +158,7 @@ This modular architecture provides several advantages:
 
 ### Data Flow
 
-1. **MCP Communication**: stdio transport ↔ MCP client ↔ `NeovimMcpServer`
+1. **MCP Communication**: stdio/HTTP transport ↔ MCP client ↔ `NeovimMcpServer`
 2. **Tool Routing**: MCP tool request → `HybridToolRouter` →
    static/dynamic tool execution
 3. **Neovim Integration**: `NeovimMcpServer` → `NeovimClientTrait` → `nvim-rs` →
@@ -429,7 +450,8 @@ the new `lua_tools.rs` module:
 
 ## Key Dependencies
 
-- **`rmcp`**: MCP protocol implementation with stdio transport and client features
+- **`rmcp`**: MCP protocol implementation with stdio transport, streamable
+  HTTP server transport, and client features
 - **`nvim-rs`**: Neovim msgpack-rpc client (with tokio feature)
 - **`tokio`**: Async runtime for concurrent operations (full feature set)
 - **`tracing`**: Structured logging with subscriber and appender support
@@ -448,6 +470,12 @@ the new `lua_tools.rs` module:
 - **`serde_json`**: JSON serialization/deserialization with enhanced
   support for Lua integration
 - **`async-trait`**: Async trait support for dynamic tool execution
+
+**HTTP Server Transport Dependencies:**
+
+- **`hyper`**: High-performance HTTP library for HTTP server transport
+- **`hyper-util`**: Utilities for hyper with server and service features
+- **`tower-http`**: HTTP middleware and utilities with CORS support
 
 **Testing and Development Dependencies:**
 

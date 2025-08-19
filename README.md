@@ -3,6 +3,8 @@
 A Model Context Protocol (MCP) server that provides seamless integration with
 Neovim instances, enabling AI assistants to interact with your editor through
 connections and access diagnostic information via structured resources.
+Supports both stdio and HTTP server transport modes for different integration
+scenarios.
 
 ## Features
 
@@ -20,6 +22,9 @@ connections and access diagnostic information via structured resources.
   tools and hybrid routing for enhanced functionality
 - **Modular Architecture**: Clean separation between core infrastructure,
   MCP tools, dynamic routing, and resource handlers
+  MCP tools, and resource handlers
+- **Multi-Transport Support**: Supports both stdio (default) and HTTP server
+  transport modes for web-based integrations
 
 ## Installation
 
@@ -47,17 +52,37 @@ cargo install --path .
 ### 1. Start the Server
 
 ```bash
-# Start as stdio MCP server (default)
+# Start as stdio MCP server (default, manual connection mode)
 nvim-mcp
+
+# Auto-connect to current project Neovim instances
+nvim-mcp --connect auto
+
+# Connect to specific target (TCP address or socket path)
+nvim-mcp --connect 127.0.0.1:6666
+nvim-mcp --connect /tmp/nvim.sock
+
 # With custom logging
 nvim-mcp --log-file ./nvim-mcp.log --log-level debug
+
+# HTTP server mode with auto-connection
+nvim-mcp --http-port 8080 --connect auto
+
+# HTTP server mode with custom bind address
+nvim-mcp --http-port 8080 --http-host 0.0.0.0
 ```
 
 #### Command Line Options
 
+- `--connect <MODE>`: Connection mode (default: manual)
+  - `manual`: Traditional workflow using get_targets and connect tools
+  - `auto`: Automatically connect to all project-associated Neovim instances
+  - Specific target: TCP address (e.g., `127.0.0.1:6666`) or absolute socket path
 - `--log-file <PATH>`: Path to log file (defaults to stderr)
 - `--log-level <LEVEL>`: Log level (trace, debug, info, warn, error;
   defaults to info)
+- `--http-port <PORT>`: Enable HTTP server mode on the specified port
+- `--http-host <HOST>`: HTTP server bind address (defaults to 127.0.0.1)
 
 ### 2. Setup Neovim Integration
 
@@ -95,11 +120,51 @@ Or add to your Neovim config:
 vim.fn.serverstart("127.0.0.1:6666")
 ```
 
-### 3. Basic Usage Workflow
+### 3. Usage Workflows
 
-Once both the MCP server and Neovim are running, here's a typical workflow:
+Once both the MCP server and Neovim are running, here are the available workflows:
 
-#### Using Unix Socket (Recommended)
+#### Automatic Connection Mode (Recommended)
+
+When using `--connect auto`, the server automatically discovers and connects to
+Neovim instances associated with your current project:
+
+1. **Start server with auto-connect**:
+
+   ```bash
+   nvim-mcp --connect auto
+   ```
+
+2. **Server automatically**:
+   - Detects current project root (git repository or working directory)
+   - Finds all Neovim instances for the current project
+   - Establishes connections with deterministic `connection_id`s
+   - Reports connection status and IDs
+3. **Use connection-aware tools directly**:
+   - Server logs will show the `connection_id`s for connected instances
+   - Use tools like `list_buffers`, `buffer_diagnostics`, etc. with these IDs
+   - Access resources immediately without manual connection setup
+
+#### Specific Target Mode
+
+For direct connection to a known target:
+
+1. **Connect to specific target**:
+
+   ```bash
+   # TCP connection
+   nvim-mcp --connect 127.0.0.1:6666
+
+   # Unix socket connection
+   nvim-mcp --connect /tmp/nvim.sock
+   ```
+
+2. **Server automatically connects and reports the `connection_id`**
+3. **Use connection-aware tools with the reported ID**
+
+#### Manual Connection Mode (Traditional)
+
+For traditional discovery-based workflow:
 
 1. **Discover available Neovim instances**:
    - Use `get_targets` tool to list available socket paths
@@ -114,12 +179,44 @@ Once both the MCP server and Neovim are running, here's a typical workflow:
 4. **Optional cleanup**:
    - Use `disconnect` tool when completely done
 
-#### Using TCP Connection
+## HTTP Server Transport
 
-1. **Connect to TCP endpoint**:
-   - Use `connect_tcp` tool with address like "127.0.0.1:6666"
-   - Save the returned `connection_id`
-2. **Follow steps 3-4 above** with your connection ID
+The server supports HTTP transport mode for web-based integrations and
+applications that cannot use stdio transport. This is useful for web
+applications, browser extensions, or other HTTP-based MCP clients.
+
+### Starting HTTP Server Mode
+
+```bash
+# Start HTTP server on default localhost:8080
+nvim-mcp --http-port 8080
+
+# Bind to all interfaces
+nvim-mcp --http-port 8080 --http-host 0.0.0.0
+
+# With custom logging
+nvim-mcp --http-port 8080 --log-file ./nvim-mcp.log --log-level debug
+```
+
+### HTTP Transport Features
+
+- **Streamable HTTP**: Uses streamable HTTP server transport for real-time communication
+- **Stateful Mode**: Maintains session state across HTTP requests
+- **CORS Support**: Includes CORS middleware for cross-origin requests
+- **Concurrent Sessions**: Supports multiple concurrent HTTP client sessions
+
+### HTTP Client Integration
+
+When using HTTP transport, MCP clients should connect to the HTTP endpoint
+instead of stdio. The exact integration depends on your MCP client library,
+but generally involves:
+
+1. Configure client to use HTTP transport instead of stdio
+2. Point to the server URL (e.g., `http://localhost:8080`)
+3. Use the same MCP tools and resources as with stdio transport
+
+The HTTP transport maintains full compatibility with all existing MCP tools
+and resources - only the transport layer changes.
 
 ## Available Tools
 
@@ -447,6 +544,9 @@ cargo run --release
 
 # Build and run with custom logging
 cargo run -- --log-file ./debug.log --log-level debug
+
+# Build and run with HTTP server mode
+cargo run -- --http-port 8080
 
 # Using Nix
 nix run .

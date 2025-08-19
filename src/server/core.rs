@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use rmcp::ErrorData as McpError;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 use crate::{
     neovim::{NeovimClientTrait, NeovimError},
@@ -116,13 +116,6 @@ fn b3sum(input: &str) -> String {
     blake3::hash(input.as_bytes()).to_hex().to_string()
 }
 
-/// Escape path for use in filename by replacing problematic characters
-#[allow(dead_code)]
-fn escape_path(path: &str) -> String {
-    // Remove leading/trailing whitespace and replace '/' with '%'
-    path.trim().replace("/", "%")
-}
-
 /// Get git root directory
 #[allow(dead_code)]
 fn get_git_root() -> Option<String> {
@@ -160,5 +153,127 @@ pub fn find_get_all_targets() -> Vec<String> {
             .map(|path| path.to_string_lossy().to_string())
             .collect(),
         Err(_) => Vec::new(),
+    }
+}
+
+/// Get current project root directory
+/// Tries git root first, falls back to current working directory
+fn get_current_project_root() -> String {
+    // Try git root first
+    if let Some(git_root) = get_git_root() {
+        return git_root;
+    }
+
+    // Fallback to current working directory
+    std::env::current_dir()
+        .unwrap_or_else(|err| {
+            warn!("Failed to get current working directory: {}", err);
+            std::path::PathBuf::from("<unknown project root>")
+        })
+        .to_string_lossy()
+        .to_string()
+}
+
+/// Escape path for use in filename by replacing problematic characters
+/// Matches the Lua plugin behavior: replaces '/' with '%'
+fn escape_path(path: &str) -> String {
+    path.trim().replace("/", "%")
+}
+
+/// Find nvim-mcp socket targets for the current project only
+/// Returns sockets that match the current project's escaped path
+pub fn find_targets_for_current_project() -> Vec<String> {
+    let current_project_root = get_current_project_root();
+    let escaped_project_root = escape_path(&current_project_root);
+
+    let temp_dir = get_temp_dir();
+    let pattern = format!("{temp_dir}/nvim-mcp.{escaped_project_root}.*.sock");
+
+    match glob::glob(&pattern) {
+        Ok(paths) => paths
+            .filter_map(|entry| entry.ok())
+            .map(|path| path.to_string_lossy().to_string())
+            .collect(),
+        Err(e) => {
+            warn!(
+                "Glob error while searching for Neovim sockets with pattern '{}': {}",
+                pattern, e
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// Connect to a single target and return the connection ID
+/// Reusable for both auto-connect and specific target modes
+pub async fn auto_connect_single_target(
+    server: &NeovimMcpServer,
+    target: &str,
+) -> Result<String, NeovimError> {
+    let connection_id = server.generate_shorter_connection_id(target);
+
+    // Check if already connected (connection replacement logic)
+    if let Some(mut old_client) = server.nvim_clients.get_mut(&connection_id) {
+        if let Some(existing_target) = old_client.target()
+            && existing_target == target
+        {
+            debug!("Already connected to {target} with ID {connection_id}");
+            return Ok(connection_id); // Already connected to same target
+        }
+        // Different target, disconnect old one
+        debug!("Disconnecting old connection for {target}");
+        let _ = old_client.disconnect().await;
+    }
+
+    // Import NeovimClient here to avoid circular imports
+    let mut client = crate::neovim::NeovimClient::new();
+    client.connect_path(target).await?;
+    client.setup_diagnostics_changed_autocmd().await?;
+
+    server
+        .nvim_clients
+        .insert(connection_id.clone(), Box::new(client));
+    debug!("Successfully connected to {target} with ID {connection_id}");
+    Ok(connection_id)
+}
+
+/// Auto-connect to all Neovim targets for the current project
+/// Returns list of successful connection IDs, or list of failures
+pub async fn auto_connect_current_project_targets(
+    server: &NeovimMcpServer,
+) -> Result<Vec<String>, Vec<(String, String)>> {
+    let project_targets = find_targets_for_current_project();
+    let current_project = get_current_project_root();
+
+    if project_targets.is_empty() {
+        info!("No Neovim instances found for current project: {current_project}");
+        return Ok(Vec::new());
+    }
+
+    info!(
+        "Found {} Neovim instances for current project: {current_project}",
+        project_targets.len()
+    );
+
+    let mut successful_connections = Vec::new();
+    let mut failed_connections = Vec::new();
+
+    for target in project_targets {
+        match auto_connect_single_target(server, &target).await {
+            Ok(connection_id) => {
+                successful_connections.push(connection_id);
+                info!("Auto-connected to project Neovim instance: {target}");
+            }
+            Err(e) => {
+                failed_connections.push((target.clone(), e.to_string()));
+                warn!("Failed to auto-connect to {target}: {e}");
+            }
+        }
+    }
+
+    if successful_connections.is_empty() && !failed_connections.is_empty() {
+        Err(failed_connections)
+    } else {
+        Ok(successful_connections)
     }
 }

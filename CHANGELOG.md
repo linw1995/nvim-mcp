@@ -18,12 +18,43 @@ All notable changes to this project will be documented in this file.
   connection lifecycle for enhanced modularity
 - **Tool Registration Resources**: New `nvim-tools://` URI scheme for monitoring
   tool availability and connection mappings
+- **Automatic Connection**: Added automatic connection feature with CLI support
+  for seamless integration with current project Neovim instances
+- **Project-Scoped Auto-Discovery**: Automatically find and connect to Neovim
+  instances associated with the current project directory
+- **Flexible Connection Modes**: Support for manual, automatic, and specific
+  target connection modes via CLI
+- **HTTP Server Transport**: Added HTTP server mode for web-based integrations
+  with streamable HTTP transport support
+- **Multi-Transport Support**: Server now supports both stdio (default) and
+  HTTP server transport modes for different integration scenarios
 
 ### Architecture Improvements
 
 - **HybridToolRouter**: Combines static tools (from `#[tool_router]` macro) with
   dynamic tools using lock-free concurrent data structures
 - **Conflict Resolution**: Prevents naming conflicts between static and dynamic tools
+
+### New CLI Options
+
+- `--connect <MODE>` - Connection mode: 'manual' (default), 'auto', or specific
+  target (TCP address/socket path)
+  - `manual`: Traditional workflow using get_targets and connect tools
+  - `auto`: Automatically connect to all project-associated Neovim instances
+  - Specific target: Direct connection to TCP address or socket path
+- `--http-port <PORT>` - Enable HTTP server mode on the specified port
+- `--http-host <HOST>` - HTTP server bind address (defaults to 127.0.0.1)
+
+### Auto-Connection Behavior
+
+- **Project Detection**: Automatically detects current project root using git
+  repository or working directory
+- **Socket Pattern Matching**: Finds Neovim instances using project-specific
+  socket naming patterns
+- **Graceful Fallback**: Continues serving with manual connection capability
+  if auto-connection fails
+- **Connection Validation**: Validates target formats and provides clear error
+  messages for invalid targets
 
 ### New Resources (2 additional)
 
@@ -41,6 +72,13 @@ All notable changes to this project will be documented in this file.
   MCP tools, dynamic routing, and resource handlers
 - Improved extensibility through dynamic tool registration API
 - Enhanced tool visibility through new resource system
+
+### Dependencies
+
+- Added `hyper` for high-performance HTTP server transport
+- Added `hyper-util` for HTTP utilities with server and service features
+- Added `tower-http` for HTTP middleware and CORS support
+- Updated `rmcp` to include streamable HTTP server transport features
 
 ## [v0.4.0] - 2025-08-16
 
