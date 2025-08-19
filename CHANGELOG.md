@@ -10,6 +10,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### New Features
+
+- **HTTP Server Transport**: Added HTTP server mode for web-based integrations
+  with streamable HTTP transport support
+- **Multi-Transport Support**: Server now supports both stdio (default) and
+  HTTP server transport modes for different integration scenarios
+
+### New CLI Options
+
+- `--http-port <PORT>` - Enable HTTP server mode on the specified port
+- `--http-host <HOST>` - HTTP server bind address (defaults to 127.0.0.1)
+
+### Dependencies
+
+- Added `hyper` for high-performance HTTP server transport
+- Added `hyper-util` for HTTP utilities with server and service features
+- Added `tower-http` for HTTP middleware and CORS support
+- Updated `rmcp` to include streamable HTTP server transport features
+
 ## [v0.4.0] - 2025-08-16
 
 ### New Features

@@ -9,8 +9,10 @@ This is a Rust-based Model Context Protocol (MCP) server that provides AI
 assistants with programmatic access to Neovim instances. The server supports
 both Unix socket/named pipe and TCP connections, implements 23 core MCP
 tools for Neovim interaction, and provides diagnostic resources through the
-`nvim-diagnostics://` URI scheme. The project uses Rust 2024 edition and
-focuses on async/concurrent operations with proper error handling throughout.
+`nvim-diagnostics://` URI scheme. The server now supports multiple transport
+modes: stdio (default), and HTTP server for web-based integrations.
+The project uses Rust 2024 edition and focuses on async/concurrent operations
+with proper error handling throughout.
 
 ## Development Commands
 
@@ -23,6 +25,12 @@ cargo run
 
 # With custom logging options
 cargo run -- --log-file ./nvim-mcp.log --log-level debug
+
+# HTTP server mode
+cargo run -- --http-port 8080
+
+# HTTP server mode with custom bind address
+cargo run -- --http-port 8080 --http-host 0.0.0.0
 
 # Production build and run
 cargo build --release
@@ -37,6 +45,8 @@ nix develop .
 - `--log-file <PATH>`: Log file path (defaults to stderr)
 - `--log-level <LEVEL>`: Log level (trace, debug, info, warn, error;
   defaults to info)
+- `--http-port <PORT>`: Enable HTTP server mode on the specified port
+- `--http-host <HOST>`: HTTP server bind address (defaults to 127.0.0.1)
 
 ### Testing
 
@@ -115,7 +125,7 @@ This modular architecture provides several advantages:
 
 ### Data Flow
 
-1. **MCP Communication**: stdio transport ↔ MCP client ↔ `NeovimMcpServer`
+1. **MCP Communication**: stdio/HTTP transport ↔ MCP client ↔ `NeovimMcpServer`
 2. **Neovim Integration**: `NeovimMcpServer` → `NeovimClientTrait` → `nvim-rs` →
    TCP/Unix socket → Neovim instance
 3. **Tool Execution**: MCP tool request → async Neovim API call → response
@@ -245,7 +255,8 @@ BLAKE3 hashes of the target string for consistent identification.
 
 ## Key Dependencies
 
-- **`rmcp`**: MCP protocol implementation with stdio transport and client features
+- **`rmcp`**: MCP protocol implementation with stdio transport, streamable
+  HTTP server transport, and client features
 - **`nvim-rs`**: Neovim msgpack-rpc client (with tokio feature)
 - **`tokio`**: Async runtime for concurrent operations (full feature set)
 - **`tracing`**: Structured logging with subscriber and appender support
@@ -257,6 +268,12 @@ BLAKE3 hashes of the target string for consistent identification.
 - **`dashmap`**: Lock-free concurrent HashMap for connection storage
 - **`regex`**: Pattern matching for connection-scoped resource URI parsing
 - **`blake3`**: Fast, deterministic hashing for connection ID generation
+
+**HTTP Server Transport Dependencies:**
+
+- **`hyper`**: High-performance HTTP library for HTTP server transport
+- **`hyper-util`**: Utilities for hyper with server and service features
+- **`tower-http`**: HTTP middleware and utilities with CORS support
 
 **Testing and Development Dependencies:**
 
