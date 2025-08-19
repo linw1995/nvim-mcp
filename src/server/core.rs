@@ -7,7 +7,10 @@ use tracing::{debug, info, warn};
 
 use crate::{
     neovim::{NeovimClientTrait, NeovimError},
-    server::hybrid_router::{DynamicToolBox, HybridToolRouter},
+    server::{
+        hybrid_router::{DynamicToolBox, HybridToolRouter},
+        lua_tools,
+    },
 };
 
 impl From<NeovimError> for McpError {
@@ -102,6 +105,15 @@ impl NeovimMcpServer {
     /// Get count of dynamic tools for a connection
     pub fn get_dynamic_tool_count(&self, connection_id: &str) -> usize {
         self.hybrid_router.get_connection_tool_count(connection_id)
+    }
+
+    pub async fn discover_and_register_lua_tools(&self) -> Result<(), McpError> {
+        for item in self.nvim_clients.iter() {
+            let connection_id = item.key().as_str();
+            let client = item.value().as_ref();
+            lua_tools::discover_and_register_lua_tools(self, connection_id, client).await?;
+        }
+        Ok(())
     }
 }
 

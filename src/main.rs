@@ -144,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = NeovimMcpServer::new();
 
     // Handle connection mode
-    match cli.connect {
+    let connection_ids = match cli.connect {
         ConnectBehavior::Auto => {
             match auto_connect_current_project_targets(&server).await {
                 Ok(connections) => {
@@ -153,6 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         info!("Auto-connected to {} project instances", connections.len());
                     }
+                    connections
                 }
                 Err(failures) => {
                     warn!("Auto-connection failed for all {} targets", failures.len());
@@ -160,18 +161,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         warn!("  {target}: {error}");
                     }
                     // Continue serving - manual connections still possible
+                    vec![]
                 }
             }
         }
         ConnectBehavior::SpecificTarget(target) => {
             match auto_connect_single_target(&server, &target).await {
-                Ok(id) => info!("Connected to specific target {} with ID {}", target, id),
+                Ok(id) => {
+                    info!("Connected to specific target {} with ID {}", target, id);
+                    vec![id]
+                }
                 Err(e) => return Err(format!("Failed to connect to {}: {}", target, e).into()),
             }
         }
         ConnectBehavior::Manual => {
             info!("Manual connection mode - use get_targets and connect tools");
+            vec![]
         }
+    };
+
+    if !connection_ids.is_empty() {
+        server
+            .discover_and_register_lua_tools()
+            .await
+            .inspect_err(|e| {
+                error!("Error setting up Lua tools: {}", e);
+            })?;
     }
 
     if let Some(port) = cli.http_port {
