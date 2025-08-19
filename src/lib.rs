@@ -4,7 +4,10 @@ mod server;
 #[cfg(test)]
 pub mod test_utils;
 
-pub use server::NeovimMcpServer;
+pub use server::{
+    NeovimMcpServer,
+    core::{auto_connect_current_project_targets, auto_connect_single_target},
+};
 
 pub type Result<T> = std::result::Result<T, ServerError>;
 
