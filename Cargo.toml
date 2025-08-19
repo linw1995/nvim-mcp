@@ -44,7 +44,17 @@ clap = { version = "4.5", features = ["derive"] }
 rmcp = { version = "0.5.0", features = [
   "transport-io",
   "transport-child-process",
+  "transport-streamable-http-server",
+  "transport-worker",
   "client",
+] }
+tower-http = { version = "0.6", features = ["cors"] }
+hyper = { version = "1" }
+hyper-util = { version = "0", features = [
+  "server",
+  "service",
+  "tokio",
+  "http2",
 ] }
 
 # Neovim Integration

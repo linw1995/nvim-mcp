@@ -1,6 +1,18 @@
-use clap::Parser;
-use rmcp::{ServiceExt, transport::stdio};
 use std::{path::PathBuf, sync::OnceLock};
+
+use clap::Parser;
+use hyper_util::{
+    rt::{TokioExecutor, TokioIo},
+    server::conn::auto::Builder,
+    service::TowerToHyperService,
+};
+use rmcp::{
+    ServiceExt,
+    transport::{
+        StreamableHttpServerConfig, StreamableHttpService, stdio,
+        streamable_http_server::session::local::LocalSessionManager,
+    },
+};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -38,6 +50,14 @@ struct Cli {
     /// Log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Enable HTTP server mode on the specified port
+    #[arg(long)]
+    http_port: Option<u16>,
+
+    /// HTTP server bind address (default: 127.0.0.1)
+    #[arg(long, default_value = "127.0.0.1")]
+    http_host: String,
 }
 
 #[tokio::main]
@@ -81,12 +101,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting nvim-mcp Neovim server");
     let server = NeovimMcpServer::new();
-    let service = server.serve(stdio()).await.inspect_err(|e| {
-        error!("Error starting Neovim server: {}", e);
-    })?;
-    info!("Neovim server started, waiting for connections...");
-    service.waiting().await?;
 
+    if let Some(port) = cli.http_port {
+        // HTTP server mode
+        let addr = format!("{}:{}", cli.http_host, port);
+        info!("Starting HTTP server on {}", addr);
+        let service = TowerToHyperService::new(StreamableHttpService::new(
+            || Ok(NeovimMcpServer::new()),
+            LocalSessionManager::default().into(),
+            StreamableHttpServerConfig {
+                stateful_mode: true,
+                ..Default::default()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        loop {
+            let io = tokio::select! {
+                _ = tokio::signal::ctrl_c() => break,
+                accept = listener.accept() => {
+                    TokioIo::new(accept?.0)
+                }
+            };
+            let service = service.clone();
+            tokio::spawn(async move {
+                let _result = Builder::new(TokioExecutor::default())
+                    .serve_connection(io, service)
+                    .await;
+            });
+        }
+    } else {
+        // Default stdio mode
+        let service = server.serve(stdio()).await.inspect_err(|e| {
+            error!("Error starting Neovim server: {}", e);
+        })?;
+
+        info!("Neovim server started, waiting for connections...");
+        service.waiting().await?;
+    };
     info!("Server shutdown complete");
 
     Ok(())
