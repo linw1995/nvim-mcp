@@ -124,9 +124,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let service = service.clone();
             tokio::spawn(async move {
-                let _result = Builder::new(TokioExecutor::default())
+                if let Err(e) = Builder::new(TokioExecutor::default())
                     .serve_connection(io, service)
-                    .await;
+                    .await
+                {
+                    error!("Error serving HTTP connection: {e}");
+                }
             });
         }
     } else {
