@@ -1191,3 +1191,137 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
 
     Ok(())
 }
+
+#[tokio::test]
+#[traced_test]
+async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing end-to-end Lua tools workflow");
+
+    // Start MCP server with child process
+    let service = ()
+        .serve(TokioChildProcess::new(Command::new("cargo").configure(
+            |cmd| {
+                cmd.args(["run", "--bin", "nvim-mcp"]);
+            },
+        ))?)
+        .await
+        .map_err(|e| {
+            error!("Failed to connect to server: {}", e);
+            e
+        })?;
+
+    info!("Connected to server");
+
+    let connection_id = {
+        info!("starting IPC Neovim for testing");
+
+        let test_ipc_path = generate_random_socket_path();
+        let cfg_path = "src/testdata/cfg_lsp.lua";
+        let open_file = "src/testdata/main.go";
+
+        let _neovim_child = crate::test_utils::setup_neovim_instance_ipc_advance(
+            &test_ipc_path,
+            cfg_path,
+            open_file,
+        )
+        .await;
+
+        // Wait for Neovim to be ready
+        time::sleep(Duration::from_millis(2000)).await;
+
+        let mut connect_args = Map::new();
+        connect_args.insert("target".to_string(), Value::String(test_ipc_path));
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "connect".into(),
+                arguments: Some(connect_args),
+            })
+            .await?;
+
+        // Setup Lua tools configuration in Neovim
+        extract_connection_id(&result)?
+    };
+
+    // Test tool discovery by listing tools (should include our custom tool)
+    let tools_result = service.list_tools(Default::default()).await?;
+    info!("Available tools after Lua setup: {:?}", tools_result);
+
+    // Check if our custom tool is discovered
+    let tools_contain_save_buffer = tools_result
+        .tools
+        .iter()
+        .any(|tool| tool.name == "save_buffer");
+    assert!(
+        tools_contain_save_buffer,
+        "Custom save_buffer tool should be discovered"
+    );
+
+    // Test custom tool execution
+    let mut tool_args = Map::new();
+    tool_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    tool_args.insert(
+        "buffer_id".to_string(),
+        Value::Number(serde_json::Number::from(1)),
+    );
+    let tool_result = service
+        .call_tool(CallToolRequestParam {
+            name: "save_buffer".into(),
+            arguments: Some(tool_args),
+        })
+        .await;
+
+    // The tool execution may fail (buffer not valid or no file), but it should not crash
+    info!("Custom tool execution result: {:?}", tool_result);
+    assert!(
+        tool_result.is_ok(),
+        "Custom tool should execute without error"
+    );
+
+    // Test error handling with invalid parameters
+    let mut invalid_args = Map::new();
+    invalid_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    invalid_args.insert(
+        "buffer_id".to_string(),
+        Value::Number(serde_json::Number::from(-1)),
+    );
+
+    // Test connection cleanup removes tools
+    let mut disconnect_args = Map::new();
+    disconnect_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+
+    let disconnect_result = service
+        .call_tool(CallToolRequestParam {
+            name: "disconnect".into(),
+            arguments: Some(disconnect_args),
+        })
+        .await?;
+
+    info!("Disconnect result: {:?}", disconnect_result);
+
+    let error_result = service
+        .call_tool(CallToolRequestParam {
+            name: "save_buffer".into(),
+            arguments: Some(invalid_args),
+        })
+        .await;
+    info!("Error handling test result: {:?}", error_result);
+    assert!(
+        error_result.is_err(),
+        "Should fail when calling save_buffer with invalid parameters"
+    );
+
+    service.cancel().await?;
+    info!("End-to-end Lua tools test completed successfully");
+
+    Ok(())
+}

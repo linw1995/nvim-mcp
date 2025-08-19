@@ -5,8 +5,10 @@ use dashmap::DashMap;
 use rmcp::ErrorData as McpError;
 use tracing::debug;
 
-use super::hybrid_router::HybridToolRouter;
-use crate::neovim::{NeovimClientTrait, NeovimError};
+use crate::{
+    neovim::{NeovimClientTrait, NeovimError},
+    server::hybrid_router::{DynamicToolBox, HybridToolRouter},
+};
 
 impl From<NeovimError> for McpError {
     fn from(err: NeovimError) -> Self {
@@ -86,7 +88,7 @@ impl NeovimMcpServer {
     pub fn register_dynamic_tool(
         &self,
         connection_id: &str,
-        tool: super::hybrid_router::DynamicTool,
+        tool: DynamicToolBox,
     ) -> Result<(), McpError> {
         self.hybrid_router
             .register_dynamic_tool(connection_id, tool)

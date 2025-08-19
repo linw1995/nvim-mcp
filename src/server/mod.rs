@@ -1,5 +1,6 @@
 pub(crate) mod core;
 mod hybrid_router;
+pub(crate) mod lua_tools;
 mod resources;
 pub(crate) mod tools;
 

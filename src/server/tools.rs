@@ -1,12 +1,15 @@
 use rmcp::{
-    ErrorData as McpError,
+    ErrorData as McpError, RoleServer,
     handler::server::{router::tool::ToolRouter, tool::Parameters},
     model::*,
-    schemars, tool, tool_router,
+    schemars,
+    service::RequestContext,
+    tool, tool_router,
 };
 use tracing::instrument;
 
 use super::core::{NeovimMcpServer, find_get_all_targets};
+use super::lua_tools;
 use crate::neovim::{
     CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient, NeovimClientTrait, Position,
     PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
@@ -344,6 +347,7 @@ impl NeovimMcpServer {
     pub async fn connect(
         &self,
         Parameters(ConnectNvimRequest { target: path }): Parameters<ConnectNvimRequest>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let connection_id = self.generate_shorter_connection_id(&path);
 
@@ -355,6 +359,28 @@ impl NeovimMcpServer {
         let mut client = NeovimClient::new();
         client.connect_path(&path).await?;
         client.setup_diagnostics_changed_autocmd().await?;
+
+        // Discover and register Lua tools for this connection
+        if let Err(e) =
+            lua_tools::discover_and_register_lua_tools(self, &connection_id, &client).await
+        {
+            tracing::warn!(
+                "Failed to discover Lua tools for connection '{}': {}",
+                connection_id,
+                e
+            );
+        } else {
+            ctx.peer
+                .notify_tool_list_changed()
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to notify tool list changed for connection '{}': {}",
+                        connection_id,
+                        e
+                    );
+                });
+        }
 
         self.nvim_clients
             .insert(connection_id.clone(), Box::new(client));
@@ -373,6 +399,7 @@ impl NeovimMcpServer {
     pub async fn connect_tcp(
         &self,
         Parameters(ConnectNvimRequest { target: address }): Parameters<ConnectNvimRequest>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let connection_id = self.generate_shorter_connection_id(&address);
 
@@ -384,6 +411,28 @@ impl NeovimMcpServer {
         let mut client = NeovimClient::new();
         client.connect_tcp(&address).await?;
         client.setup_diagnostics_changed_autocmd().await?;
+
+        // Discover and register Lua tools for this connection
+        if let Err(e) =
+            lua_tools::discover_and_register_lua_tools(self, &connection_id, &client).await
+        {
+            tracing::warn!(
+                "Failed to discover Lua tools for connection '{}': {}",
+                connection_id,
+                e
+            );
+        } else {
+            ctx.peer
+                .notify_tool_list_changed()
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to notify tool list changed for connection '{}': {}",
+                        connection_id,
+                        e
+                    );
+                });
+        }
 
         self.nvim_clients
             .insert(connection_id.clone(), Box::new(client));

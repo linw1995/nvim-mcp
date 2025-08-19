@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use futures::future::BoxFuture;
 use rmcp::{
     ErrorData as McpError,
     handler::server::{router::tool::ToolRouter, tool::ToolCallContext},
@@ -11,23 +10,32 @@ use rmcp::{
 };
 use tracing::{debug, instrument};
 
+use crate::neovim::NeovimClientTrait;
+
 use super::core::NeovimMcpServer;
-/// Type alias for the dynamic tool handler function
-type DynamicToolHandler = Arc<
-    dyn Fn(
-            &NeovimMcpServer,
-            serde_json::Value,
-        ) -> BoxFuture<'static, Result<CallToolResult, McpError>>
-        + Send
-        + Sync,
->;
+
+/// Type alias for a single dynamic tool instance
+pub type DynamicToolBox = Box<dyn DynamicTool>;
+
+/// Type alias for connection-to-tool mapping for a specific tool name
+pub type ConnectionToolMap = DashMap<String, DynamicToolBox>;
+
+/// Type alias for the complete dynamic tools storage structure
+pub type DynamicToolsStorage = Arc<DashMap<String, ConnectionToolMap>>;
 
 /// Dynamic tool definition with async handler
-pub struct DynamicTool {
-    pub name: String,
-    pub description: String,
-    pub input_schema: serde_json::Value,
-    pub handler: DynamicToolHandler,
+#[async_trait::async_trait]
+pub trait DynamicTool: Send + Sync {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    fn input_schema(&self) -> &serde_json::Value;
+    fn validate_input(&self, arguments: &serde_json::Value) -> Result<(), McpError>;
+
+    async fn call(
+        &self,
+        client: dashmap::mapref::one::Ref<'_, String, Box<dyn NeovimClientTrait + Send>>,
+        arguments: serde_json::Value,
+    ) -> Result<CallToolResult, McpError>;
 }
 
 /// Hybrid router that combines static tools (from #[tool_router] macro) with dynamic tools
@@ -36,7 +44,7 @@ pub struct HybridToolRouter {
     static_router: ToolRouter<NeovimMcpServer>,
 
     /// Dynamic tools by tool name, then by connection ID (tool_name -> connection_id -> tool)
-    dynamic_tools: Arc<DashMap<String, DashMap<String, DynamicTool>>>,
+    dynamic_tools: DynamicToolsStorage,
 
     /// Connection-specific tool mapping: connection_id -> tool_names
     connection_tools: Arc<DashMap<String, HashSet<String>>>,
@@ -57,9 +65,9 @@ impl HybridToolRouter {
     pub fn register_dynamic_tool(
         &self,
         connection_id: &str,
-        tool: DynamicTool,
+        tool: DynamicToolBox,
     ) -> Result<(), McpError> {
-        let tool_name = tool.name.clone();
+        let tool_name = tool.name().to_owned();
 
         // Check if tool name conflicts with static tools
         if self.static_router.has_route(&tool_name) {
@@ -146,9 +154,9 @@ impl HybridToolRouter {
                 let tool = first_tool_entry.value();
                 tools.push(Tool {
                     name: tool_name.clone().into(),
-                    description: Some(tool.description.clone().into()),
+                    description: Some(tool.description().to_owned().into()),
                     input_schema: Arc::new(
-                        tool.input_schema
+                        tool.input_schema()
                             .as_object()
                             .unwrap_or(&serde_json::Map::new())
                             .clone(),
@@ -157,7 +165,7 @@ impl HybridToolRouter {
                     annotations: Some(ToolAnnotations {
                         title: Some(format!(
                             "Dynamic: {} (available on {} connections)",
-                            tool.name,
+                            tool.name(),
                             connections_map.len()
                         )),
                         read_only_hint: Some(false),
@@ -197,10 +205,10 @@ impl HybridToolRouter {
                     && let Some(tool) = tools_for_name.get(connection_id)
                 {
                     tools.push(Tool {
-                        name: tool.name.clone().into(),
-                        description: Some(tool.description.clone().into()),
+                        name: tool.name().to_owned().into(),
+                        description: Some(tool.description().to_owned().into()),
                         input_schema: Arc::new(
-                            tool.input_schema
+                            tool.input_schema()
                                 .as_object()
                                 .unwrap_or(&serde_json::Map::new())
                                 .clone(),
@@ -215,34 +223,6 @@ impl HybridToolRouter {
                         }),
                     });
                 }
-            }
-        }
-
-        // Add global dynamic tools
-        for tool_name_entry in self.dynamic_tools.iter() {
-            let tool_name = tool_name_entry.key();
-            let connections_map = tool_name_entry.value();
-
-            if let Some(global_tool) = connections_map.get("__global__") {
-                tools.push(Tool {
-                    name: tool_name.clone().into(),
-                    description: Some(global_tool.description.clone().into()),
-                    input_schema: Arc::new(
-                        global_tool
-                            .input_schema
-                            .as_object()
-                            .unwrap_or(&serde_json::Map::new())
-                            .clone(),
-                    ),
-                    output_schema: None,
-                    annotations: Some(ToolAnnotations {
-                        title: Some("Global Dynamic".to_string()),
-                        read_only_hint: Some(false),
-                        destructive_hint: Some(false),
-                        idempotent_hint: Some(false),
-                        open_world_hint: Some(false),
-                    }),
-                });
             }
         }
 
@@ -268,17 +248,28 @@ impl HybridToolRouter {
             let connection_id = arguments
                 .get("connection_id")
                 .and_then(|v| v.as_str())
-                .unwrap_or("__global__"); // Default to global if no connection_id
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!(
+                            "Dynamic tool '{}' requires connection_id parameter",
+                            tool_name
+                        ),
+                        None,
+                    )
+                })?;
+
+            let client = server.get_connection(connection_id)?;
 
             if let Some(dynamic_tool) = tools_for_name.get(connection_id) {
                 debug!(
                     "Executing dynamic tool: {} for connection: {}",
                     tool_name, connection_id
                 );
-                return (dynamic_tool.handler)(server, arguments).await;
-            } else if let Some(global_tool) = tools_for_name.get("__global__") {
-                debug!("Executing global dynamic tool: {}", tool_name);
-                return (global_tool.handler)(server, arguments).await;
+
+                // Validate input arguments before execution
+                dynamic_tool.validate_input(&arguments)?;
+
+                return dynamic_tool.call(client, arguments).await;
             } else {
                 return Err(McpError::invalid_request(
                     format!(
@@ -344,21 +335,8 @@ impl HybridToolRouter {
                 if let Some(tools_for_name) = self.dynamic_tools.get(tool_name)
                     && let Some(tool) = tools_for_name.get(connection_id)
                 {
-                    tools_info.push((tool.name.clone(), tool.description.clone(), false));
+                    tools_info.push((tool.name().to_owned(), tool.description().to_owned(), false));
                 }
-            }
-        }
-
-        // Add global dynamic tools
-        for tool_name_entry in self.dynamic_tools.iter() {
-            let connections_map = tool_name_entry.value();
-
-            if let Some(global_tool) = connections_map.get("__global__") {
-                tools_info.push((
-                    global_tool.name.clone(),
-                    global_tool.description.clone(),
-                    false,
-                ));
             }
         }
 
