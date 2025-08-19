@@ -152,15 +152,19 @@ impl HybridToolRouter {
             // Pick any tool from the connections to get metadata (they should all be the same)
             if let Some(first_tool_entry) = connections_map.iter().next() {
                 let tool = first_tool_entry.value();
+                let mut schema = tool
+                    .input_schema()
+                    .as_object()
+                    .unwrap_or(&serde_json::Map::new())
+                    .clone();
+                schema.insert(
+                    "connection_id".to_string(),
+                    serde_json::Value::String("Connection ID".to_string()),
+                );
                 tools.push(Tool {
                     name: tool_name.clone().into(),
                     description: Some(tool.description().to_owned().into()),
-                    input_schema: Arc::new(
-                        tool.input_schema()
-                            .as_object()
-                            .unwrap_or(&serde_json::Map::new())
-                            .clone(),
-                    ),
+                    input_schema: Arc::new(schema),
                     output_schema: None,
                     annotations: Some(ToolAnnotations {
                         title: Some(format!(
