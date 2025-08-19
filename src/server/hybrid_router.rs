@@ -14,8 +14,78 @@ use crate::neovim::NeovimClientTrait;
 
 use super::core::NeovimMcpServer;
 
+/// Implementation of From<&dyn DynamicTool> for rmcp::model::Tool
+///
+/// This implementation automatically injects the `connection_id` parameter into the JSON schema
+/// properties and required fields, ensuring that all dynamic tools are compatible with the
+/// MCP protocol's requirement for connection-scoped operations.
+///
+/// The injected `connection_id` parameter follows the standard format:
+/// - type: "string"
+/// - description: "Unique identifier for the target Neovim instance"
+/// - required: true (added to the required array if not already present)
+impl From<&dyn DynamicTool> for Tool {
+    fn from(val: &dyn DynamicTool) -> Self {
+        let mut schema = val
+            .input_schema()
+            .as_object()
+            .unwrap_or(&serde_json::Map::new())
+            .clone();
+
+        // Ensure there's a properties object
+        let properties = schema
+            .entry("properties".to_string())
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .expect("properties should be an object");
+
+        // Add connection_id parameter if not already present
+        properties
+            .entry("connection_id".to_string())
+            .or_insert_with(|| {
+                serde_json::json!({
+                    "type": "string",
+                    "description": "Unique identifier for the target Neovim instance"
+                })
+            });
+
+        // Add connection_id to required fields if not already present
+        let required = schema
+            .entry("required".to_string())
+            .or_insert_with(|| serde_json::json!([]))
+            .as_array_mut()
+            .expect("required should be an array");
+
+        if !required.iter().any(|v| v.as_str() == Some("connection_id")) {
+            required.push(serde_json::json!("connection_id"));
+        }
+
+        Tool {
+            name: val.name().to_owned().into(),
+            description: Some(val.description().to_owned().into()),
+            input_schema: Arc::new(schema),
+            output_schema: None,
+            annotations: Some(ToolAnnotations {
+                title: Some(format!("Dynamic: {}", val.name())),
+                read_only_hint: None,
+                destructive_hint: None,
+                idempotent_hint: None,
+                open_world_hint: None,
+            }),
+        }
+    }
+}
+
 /// Type alias for a single dynamic tool instance
 pub type DynamicToolBox = Box<dyn DynamicTool>;
+
+/// Implementation of Into<rmcp::model::Tool> for DynamicToolBox (Box<dyn DynamicTool>)
+/// Delegates to the trait object implementation
+impl From<&DynamicToolBox> for Tool {
+    fn from(val: &DynamicToolBox) -> Self {
+        val.as_ref().into()
+    }
+}
 
 /// Type alias for connection-to-tool mapping for a specific tool name
 pub type ConnectionToolMap = DashMap<String, DynamicToolBox>;
@@ -146,38 +216,24 @@ impl HybridToolRouter {
         // 2. Add dynamic tools with proper metadata
         // For each tool name, we want to show one entry (representing all connections that have this tool)
         for tool_name_entry in self.dynamic_tools.iter() {
-            let tool_name = tool_name_entry.key();
+            let _tool_name = tool_name_entry.key();
             let connections_map = tool_name_entry.value();
 
             // Pick any tool from the connections to get metadata (they should all be the same)
             if let Some(first_tool_entry) = connections_map.iter().next() {
                 let tool = first_tool_entry.value();
-                let mut schema = tool
-                    .input_schema()
-                    .as_object()
-                    .unwrap_or(&serde_json::Map::new())
-                    .clone();
-                schema.insert(
-                    "connection_id".to_string(),
-                    serde_json::Value::String("Connection ID".to_string()),
-                );
-                tools.push(Tool {
-                    name: tool_name.clone().into(),
-                    description: Some(tool.description().to_owned().into()),
-                    input_schema: Arc::new(schema),
-                    output_schema: None,
-                    annotations: Some(ToolAnnotations {
-                        title: Some(format!(
-                            "Dynamic: {} (available on {} connections)",
-                            tool.name(),
-                            connections_map.len()
-                        )),
-                        read_only_hint: Some(false),
-                        destructive_hint: Some(false),
-                        idempotent_hint: Some(false),
-                        open_world_hint: Some(false),
-                    }),
-                });
+                let mut mcp_tool: Tool = tool.as_ref().into();
+
+                // Update the title to show availability on multiple connections
+                if let Some(ref mut annotations) = mcp_tool.annotations {
+                    annotations.title = Some(format!(
+                        "Dynamic: {} (available on {} connections)",
+                        tool.name(),
+                        connections_map.len()
+                    ));
+                }
+
+                tools.push(mcp_tool);
             }
         }
 
@@ -208,24 +264,14 @@ impl HybridToolRouter {
                 if let Some(tools_for_name) = self.dynamic_tools.get(tool_name)
                     && let Some(tool) = tools_for_name.get(connection_id)
                 {
-                    tools.push(Tool {
-                        name: tool.name().to_owned().into(),
-                        description: Some(tool.description().to_owned().into()),
-                        input_schema: Arc::new(
-                            tool.input_schema()
-                                .as_object()
-                                .unwrap_or(&serde_json::Map::new())
-                                .clone(),
-                        ),
-                        output_schema: None,
-                        annotations: Some(ToolAnnotations {
-                            title: Some(format!("Connection: {}", connection_id)),
-                            read_only_hint: Some(false),
-                            destructive_hint: Some(false),
-                            idempotent_hint: Some(false),
-                            open_world_hint: Some(false),
-                        }),
-                    });
+                    let mut mcp_tool: Tool = tool.as_ref().into();
+
+                    // Update annotations for connection-specific context
+                    if let Some(ref mut annotations) = mcp_tool.annotations {
+                        annotations.title = Some(format!("Connection: {}", connection_id));
+                    }
+
+                    tools.push(mcp_tool);
                 }
             }
         }
@@ -345,5 +391,181 @@ impl HybridToolRouter {
         }
 
         tools_info
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Mock implementation of DynamicTool for testing
+    struct MockDynamicTool {
+        name: String,
+        description: String,
+        schema: serde_json::Value,
+    }
+
+    #[async_trait::async_trait]
+    impl DynamicTool for MockDynamicTool {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn description(&self) -> &str {
+            &self.description
+        }
+
+        fn input_schema(&self) -> &serde_json::Value {
+            &self.schema
+        }
+
+        fn validate_input(&self, _arguments: &serde_json::Value) -> Result<(), McpError> {
+            Ok(())
+        }
+
+        async fn call(
+            &self,
+            _client: dashmap::mapref::one::Ref<'_, String, Box<dyn NeovimClientTrait + Send>>,
+            _arguments: serde_json::Value,
+        ) -> Result<CallToolResult, McpError> {
+            Ok(CallToolResult::success(vec![]))
+        }
+    }
+
+    #[test]
+    fn test_dynamic_tool_into_mcp_tool() {
+        let mock_tool = MockDynamicTool {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            schema: json!({
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "A test message"
+                    }
+                },
+                "required": ["message"]
+            }),
+        };
+
+        // Test the Into<Tool> implementation
+        let mcp_tool: Tool = (&mock_tool as &dyn DynamicTool).into();
+
+        // Verify basic properties
+        assert_eq!(mcp_tool.name, "test_tool");
+        assert_eq!(mcp_tool.description.unwrap(), "A test tool");
+
+        // Verify the schema was properly modified
+        let schema = mcp_tool.input_schema;
+        let properties = schema.get("properties").unwrap().as_object().unwrap();
+
+        // Check that connection_id was injected
+        assert!(properties.contains_key("connection_id"));
+        let connection_id_prop = properties.get("connection_id").unwrap();
+        assert_eq!(connection_id_prop.get("type").unwrap(), "string");
+        assert_eq!(
+            connection_id_prop.get("description").unwrap(),
+            "Unique identifier for the target Neovim instance"
+        );
+
+        // Check that original properties are preserved
+        assert!(properties.contains_key("message"));
+        let message_prop = properties.get("message").unwrap();
+        assert_eq!(message_prop.get("type").unwrap(), "string");
+        assert_eq!(message_prop.get("description").unwrap(), "A test message");
+
+        // Check that connection_id was added to required fields
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        assert!(required.contains(&json!("connection_id")));
+        assert!(required.contains(&json!("message")));
+
+        // Check annotations
+        assert!(mcp_tool.annotations.is_some());
+        let annotations = mcp_tool.annotations.unwrap();
+        assert_eq!(annotations.title.unwrap(), "Dynamic: test_tool");
+    }
+
+    #[test]
+    fn test_dynamic_tool_into_mcp_tool_preserves_existing_connection_id() {
+        let mock_tool = MockDynamicTool {
+            name: "existing_connection_id_tool".to_string(),
+            description: "A tool that already has connection_id".to_string(),
+            schema: json!({
+                "type": "object",
+                "properties": {
+                    "connection_id": {
+                        "type": "string",
+                        "description": "Custom connection ID description"
+                    },
+                    "data": {
+                        "type": "string"
+                    }
+                },
+                "required": ["connection_id", "data"]
+            }),
+        };
+
+        // Test the Into<Tool> implementation
+        let mcp_tool: Tool = (&mock_tool as &dyn DynamicTool).into();
+
+        // Verify the schema
+        let schema = mcp_tool.input_schema;
+        let properties = schema.get("properties").unwrap().as_object().unwrap();
+
+        // Check that the existing connection_id property was preserved (not overwritten)
+        assert!(properties.contains_key("connection_id"));
+        let connection_id_prop = properties.get("connection_id").unwrap();
+        assert_eq!(connection_id_prop.get("type").unwrap(), "string");
+        assert_eq!(
+            connection_id_prop.get("description").unwrap(),
+            "Custom connection ID description" // Original description preserved
+        );
+
+        // Check that required array doesn't have duplicates
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        let connection_id_count = required
+            .iter()
+            .filter(|v| v.as_str() == Some("connection_id"))
+            .count();
+        assert_eq!(
+            connection_id_count, 1,
+            "connection_id should appear only once in required array"
+        );
+    }
+
+    #[test]
+    fn test_dynamic_tool_box_into_mcp_tool() {
+        let mock_tool: DynamicToolBox = Box::new(MockDynamicTool {
+            name: "boxed_tool".to_string(),
+            description: "A boxed test tool".to_string(),
+            schema: json!({
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "integer"
+                    }
+                },
+                "required": ["value"]
+            }),
+        });
+
+        // Test the Into<Tool> implementation for DynamicToolBox
+        let mcp_tool: Tool = (&mock_tool).into();
+
+        // Verify basic properties
+        assert_eq!(mcp_tool.name, "boxed_tool");
+        assert_eq!(mcp_tool.description.unwrap(), "A boxed test tool");
+
+        // Verify connection_id was injected
+        let schema = mcp_tool.input_schema;
+        let properties = schema.get("properties").unwrap().as_object().unwrap();
+        assert!(properties.contains_key("connection_id"));
+        assert!(properties.contains_key("value"));
+
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        assert!(required.contains(&json!("connection_id")));
+        assert!(required.contains(&json!("value")));
     }
 }
