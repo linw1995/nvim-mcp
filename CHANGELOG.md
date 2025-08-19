@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.
 
 ### New Features
 
+- **Automatic Connection**: Added automatic connection feature with CLI support
+  for seamless integration with current project Neovim instances
+- **Project-Scoped Auto-Discovery**: Automatically find and connect to Neovim
+  instances associated with the current project directory
+- **Flexible Connection Modes**: Support for manual, automatic, and specific
+  target connection modes via CLI
 - **HTTP Server Transport**: Added HTTP server mode for web-based integrations
   with streamable HTTP transport support
 - **Multi-Transport Support**: Server now supports both stdio (default) and
@@ -19,8 +25,24 @@ All notable changes to this project will be documented in this file.
 
 ### New CLI Options
 
+- `--connect <MODE>` - Connection mode: 'manual' (default), 'auto', or specific
+  target (TCP address/socket path)
+  - `manual`: Traditional workflow using get_targets and connect tools
+  - `auto`: Automatically connect to all project-associated Neovim instances
+  - Specific target: Direct connection to TCP address or socket path
 - `--http-port <PORT>` - Enable HTTP server mode on the specified port
 - `--http-host <HOST>` - HTTP server bind address (defaults to 127.0.0.1)
+
+### Auto-Connection Behavior
+
+- **Project Detection**: Automatically detects current project root using git
+  repository or working directory
+- **Socket Pattern Matching**: Finds Neovim instances using project-specific
+  socket naming patterns
+- **Graceful Fallback**: Continues serving with manual connection capability
+  if auto-connection fails
+- **Connection Validation**: Validates target formats and provides clear error
+  messages for invalid targets
 
 ### Dependencies
 

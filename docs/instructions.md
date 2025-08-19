@@ -311,6 +311,20 @@ Connection-scoped diagnostic resources using `nvim-diagnostics://` scheme:
 
 ### Connection Workflow for LLMs
 
+#### Automatic Connection (Recommended)
+
+When the nvim-mcp server is started with `--connect auto`, connections are
+established automatically:
+
+1. **Pre-established Connections**: Server automatically discovers and connects
+   to project-associated Neovim instances
+2. **Connection ID Retrieval**: Use the `nvim-connections://` resource to get
+   available `connection_id`s
+3. **Direct Tool Usage**: Use connection-aware tools immediately with the
+   retrieved `connection_id`s
+
+#### Manual Connection Workflow
+
 1. **Discovery Phase**: Use `get_targets` to find available Neovim instances
 2. **Connection Phase**: Use `connect` with a target from the discovery results
 3. **Caching Phase**: Store the `connection_id` for reuse across multiple operations
@@ -378,9 +392,16 @@ Connection-scoped diagnostic resources using `nvim-diagnostics://` scheme:
 
 ### Integration Workflows
 
+#### Automatic Connection Workflow
+
+1. Start server with `nvim-mcp --connect auto`
+2. Read nvim-connections:// resource to get available connection IDs
+3. Use connection IDs directly with connection-aware tools
+4. Server maintains all connections automatically
+
 #### Diagnostic Analysis
 
-1. Connect to Neovim instance (cache connection_id)
+1. Connect to Neovim instance (cache connection_id) or use auto-connected IDs
 2. Read workspace diagnostics resource
 3. Group diagnostics by severity and file
 4. Use buffer_diagnostics for detailed file analysis (reuse connection_id)

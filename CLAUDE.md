@@ -23,11 +23,18 @@ with proper error handling throughout.
 cargo build
 cargo run
 
+# Auto-connect to current project Neovim instances
+cargo run -- --connect auto
+
+# Connect to specific target
+cargo run -- --connect 127.0.0.1:6666
+cargo run -- --connect /tmp/nvim.sock
+
 # With custom logging options
 cargo run -- --log-file ./nvim-mcp.log --log-level debug
 
-# HTTP server mode
-cargo run -- --http-port 8080
+# HTTP server mode with auto-connection
+cargo run -- --http-port 8080 --connect auto
 
 # HTTP server mode with custom bind address
 cargo run -- --http-port 8080 --http-host 0.0.0.0
@@ -42,6 +49,10 @@ nix develop .
 
 **CLI Options:**
 
+- `--connect <MODE>`: Connection mode (defaults to manual)
+  - `manual`: Traditional workflow using get_targets and connect tools
+  - `auto`: Automatically connect to all project-associated Neovim instances
+  - Specific target: Direct connection to TCP address or socket path
 - `--log-file <PATH>`: Log file path (defaults to stderr)
 - `--log-level <LEVEL>`: Log level (trace, debug, info, warn, error;
   defaults to info)
