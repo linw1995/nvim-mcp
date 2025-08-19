@@ -1,4 +1,4 @@
-pub(crate) mod core;
+pub mod core;
 mod resources;
 pub(crate) mod tools;
 

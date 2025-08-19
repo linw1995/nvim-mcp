@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::OnceLock};
+use std::{path::PathBuf, str::FromStr, sync::OnceLock};
 
 use clap::Parser;
 use hyper_util::{
@@ -13,10 +13,10 @@ use rmcp::{
         streamable_http_server::session::local::LocalSessionManager,
     },
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
-use nvim_mcp::NeovimMcpServer;
+use nvim_mcp::{NeovimMcpServer, auto_connect_current_project_targets, auto_connect_single_target};
 
 static LONG_VERSION: OnceLock<String> = OnceLock::new();
 
@@ -40,6 +40,43 @@ fn long_version() -> &'static str {
         .as_str()
 }
 
+#[derive(Clone, Debug)]
+enum ConnectBehavior {
+    Manual,
+    Auto,
+    SpecificTarget(String),
+}
+
+impl FromStr for ConnectBehavior {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "manual" => Ok(ConnectBehavior::Manual),
+            "auto" => Ok(ConnectBehavior::Auto),
+            target => {
+                // Validate TCP address format
+                if target.parse::<std::net::SocketAddr>().is_ok() {
+                    return Ok(ConnectBehavior::SpecificTarget(target.to_string()));
+                }
+
+                // Validate file path (socket/pipe)
+                let path = std::path::Path::new(target);
+                if path.is_absolute()
+                    && (path.exists() || path.parent().is_some_and(|p| p.exists()))
+                {
+                    return Ok(ConnectBehavior::SpecificTarget(target.to_string()));
+                }
+
+                Err(format!(
+                    "Invalid target: '{}'. Must be 'manual', 'auto', TCP address (e.g., '127.0.0.1:6666'), or absolute socket path",
+                    target
+                ))
+            }
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(version, long_version=long_version(), about, long_about = None)]
 struct Cli {
@@ -58,6 +95,10 @@ struct Cli {
     /// HTTP server bind address (default: 127.0.0.1)
     #[arg(long, default_value = "127.0.0.1")]
     http_host: String,
+
+    /// Connection mode: 'manual', 'auto', or specific target (TCP address/socket path)
+    #[arg(long, default_value = "manual")]
+    connect: ConnectBehavior,
 }
 
 #[tokio::main]
@@ -102,6 +143,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting nvim-mcp Neovim server");
     let server = NeovimMcpServer::new();
 
+    // Handle connection mode
+    match cli.connect {
+        ConnectBehavior::Auto => {
+            match auto_connect_current_project_targets(&server).await {
+                Ok(connections) => {
+                    if connections.is_empty() {
+                        info!("No Neovim instances found for current project");
+                    } else {
+                        info!("Auto-connected to {} project instances", connections.len());
+                    }
+                }
+                Err(failures) => {
+                    warn!("Auto-connection failed for all {} targets", failures.len());
+                    for (target, error) in &failures {
+                        warn!("  {target}: {error}");
+                    }
+                    // Continue serving - manual connections still possible
+                }
+            }
+        }
+        ConnectBehavior::SpecificTarget(target) => {
+            match auto_connect_single_target(&server, &target).await {
+                Ok(id) => info!("Connected to specific target {} with ID {}", target, id),
+                Err(e) => return Err(format!("Failed to connect to {}: {}", target, e).into()),
+            }
+        }
+        ConnectBehavior::Manual => {
+            info!("Manual connection mode - use get_targets and connect tools");
+        }
+    }
+
     if let Some(port) = cli.http_port {
         // HTTP server mode
         let addr = format!("{}:{}", cli.http_host, port);
@@ -134,6 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else {
         // Default stdio mode
+        info!("Starting Neovim server on stdio");
         let service = server.serve(stdio()).await.inspect_err(|e| {
             error!("Error starting Neovim server: {}", e);
         })?;
