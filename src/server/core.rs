@@ -142,7 +142,10 @@ fn get_current_project_root() -> String {
 
     // Fallback to current working directory
     std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .unwrap_or_else(|err| {
+            warn!("Failed to get current working directory: {}", err);
+            std::path::PathBuf::from("<unknown project root>")
+        })
         .to_string_lossy()
         .to_string()
 }
@@ -167,7 +170,13 @@ pub fn find_targets_for_current_project() -> Vec<String> {
             .filter_map(|entry| entry.ok())
             .map(|path| path.to_string_lossy().to_string())
             .collect(),
-        Err(_) => Vec::new(),
+        Err(e) => {
+            warn!(
+                "Glob error while searching for Neovim sockets with pattern '{}': {}",
+                pattern, e
+            );
+            Vec::new()
+        }
     }
 }
 
