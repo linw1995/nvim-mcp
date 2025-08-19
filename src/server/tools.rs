@@ -1,8 +1,10 @@
 use rmcp::{
-    ErrorData as McpError,
+    ErrorData as McpError, RoleServer,
     handler::server::{router::tool::ToolRouter, tool::Parameters},
     model::*,
-    schemars, tool, tool_router,
+    schemars,
+    service::RequestContext,
+    tool, tool_router,
 };
 use tracing::instrument;
 
@@ -345,6 +347,7 @@ impl NeovimMcpServer {
     pub async fn connect(
         &self,
         Parameters(ConnectNvimRequest { target: path }): Parameters<ConnectNvimRequest>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let connection_id = self.generate_shorter_connection_id(&path);
 
@@ -366,6 +369,17 @@ impl NeovimMcpServer {
                 connection_id,
                 e
             );
+        } else {
+            ctx.peer
+                .notify_tool_list_changed()
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to notify tool list changed for connection '{}': {}",
+                        connection_id,
+                        e
+                    );
+                });
         }
 
         self.nvim_clients
@@ -385,6 +399,7 @@ impl NeovimMcpServer {
     pub async fn connect_tcp(
         &self,
         Parameters(ConnectNvimRequest { target: address }): Parameters<ConnectNvimRequest>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let connection_id = self.generate_shorter_connection_id(&address);
 
@@ -406,6 +421,17 @@ impl NeovimMcpServer {
                 connection_id,
                 e
             );
+        } else {
+            ctx.peer
+                .notify_tool_list_changed()
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to notify tool list changed for connection '{}': {}",
+                        connection_id,
+                        e
+                    );
+                });
         }
 
         self.nvim_clients

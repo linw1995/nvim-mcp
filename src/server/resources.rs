@@ -18,6 +18,7 @@ impl ServerHandler for NeovimMcpServer {
             instructions: Some(include_str!("../../docs/instructions.md").to_string()),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
+                .enable_tool_list_changed()
                 .enable_resources()
                 .build(),
             ..Default::default()
