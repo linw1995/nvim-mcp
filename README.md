@@ -3,6 +3,8 @@
 A Model Context Protocol (MCP) server that provides seamless integration with
 Neovim instances, enabling AI assistants to interact with your editor through
 connections and access diagnostic information via structured resources.
+Supports both stdio and HTTP server transport modes for different integration
+scenarios.
 
 ## Features
 
@@ -18,6 +20,8 @@ connections and access diagnostic information via structured resources.
 - **Plugin Integration**: Automatic setup through Neovim plugin
 - **Modular Architecture**: Clean separation between core infrastructure,
   MCP tools, and resource handlers
+- **Multi-Transport Support**: Supports both stdio (default) and HTTP server
+  transport modes for web-based integrations
 
 ## Installation
 
@@ -47,8 +51,15 @@ cargo install --path .
 ```bash
 # Start as stdio MCP server (default)
 nvim-mcp
+
 # With custom logging
 nvim-mcp --log-file ./nvim-mcp.log --log-level debug
+
+# HTTP server mode
+nvim-mcp --http-port 8080
+
+# HTTP server mode with custom bind address
+nvim-mcp --http-port 8080 --http-host 0.0.0.0
 ```
 
 #### Command Line Options
@@ -56,6 +67,8 @@ nvim-mcp --log-file ./nvim-mcp.log --log-level debug
 - `--log-file <PATH>`: Path to log file (defaults to stderr)
 - `--log-level <LEVEL>`: Log level (trace, debug, info, warn, error;
   defaults to info)
+- `--http-port <PORT>`: Enable HTTP server mode on the specified port
+- `--http-host <HOST>`: HTTP server bind address (defaults to 127.0.0.1)
 
 ### 2. Setup Neovim Integration
 
@@ -118,6 +131,45 @@ Once both the MCP server and Neovim are running, here's a typical workflow:
    - Use `connect_tcp` tool with address like "127.0.0.1:6666"
    - Save the returned `connection_id`
 2. **Follow steps 3-4 above** with your connection ID
+
+## HTTP Server Transport
+
+The server supports HTTP transport mode for web-based integrations and
+applications that cannot use stdio transport. This is useful for web
+applications, browser extensions, or other HTTP-based MCP clients.
+
+### Starting HTTP Server Mode
+
+```bash
+# Start HTTP server on default localhost:8080
+nvim-mcp --http-port 8080
+
+# Bind to all interfaces
+nvim-mcp --http-port 8080 --http-host 0.0.0.0
+
+# With custom logging
+nvim-mcp --http-port 8080 --log-file ./nvim-mcp.log --log-level debug
+```
+
+### HTTP Transport Features
+
+- **Streamable HTTP**: Uses streamable HTTP server transport for real-time communication
+- **Stateful Mode**: Maintains session state across HTTP requests
+- **CORS Support**: Includes CORS middleware for cross-origin requests
+- **Concurrent Sessions**: Supports multiple concurrent HTTP client sessions
+
+### HTTP Client Integration
+
+When using HTTP transport, MCP clients should connect to the HTTP endpoint
+instead of stdio. The exact integration depends on your MCP client library,
+but generally involves:
+
+1. Configure client to use HTTP transport instead of stdio
+2. Point to the server URL (e.g., `http://localhost:8080`)
+3. Use the same MCP tools and resources as with stdio transport
+
+The HTTP transport maintains full compatibility with all existing MCP tools
+and resources - only the transport layer changes.
 
 ## Available Tools
 
@@ -434,6 +486,9 @@ cargo run --release
 
 # Build and run with custom logging
 cargo run -- --log-file ./debug.log --log-level debug
+
+# Build and run with HTTP server mode
+cargo run -- --http-port 8080
 
 # Using Nix
 nix run .
