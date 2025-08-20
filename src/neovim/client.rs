@@ -71,7 +71,7 @@ pub trait NeovimClientTrait: Sync {
         &self,
         client_name: &str,
         query: &str,
-    ) -> Result<WorkspaceSymbolResult, NeovimError>;
+    ) -> Result<Option<DocumentSymbolResult>, NeovimError>;
 
     /// Get references for a symbol at a specific position
     async fn lsp_references(
@@ -1011,14 +1011,6 @@ pub enum DocumentSymbolResult {
     Information(Vec<SymbolInformation>),
 }
 
-/// Result type for workspace symbols request
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct WorkspaceSymbolResult {
-    pub result: Option<DocumentSymbolResult>,
-    #[serde(flatten)]
-    pub unknowns: HashMap<String, serde_json::Value>,
-}
-
 /// Prepare rename response variants
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(untagged)]
@@ -1639,7 +1631,7 @@ where
         &self,
         client_name: &str,
         query: &str,
-    ) -> Result<WorkspaceSymbolResult, NeovimError> {
+    ) -> Result<Option<DocumentSymbolResult>, NeovimError> {
         let conn = self.connection.as_ref().ok_or_else(|| {
             NeovimError::Connection("Not connected to any Neovim instance".to_string())
         })?;
@@ -1662,7 +1654,7 @@ where
             .await
         {
             Ok(result) => {
-                match serde_json::from_str::<NvimExecuteLuaResult<WorkspaceSymbolResult>>(
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<DocumentSymbolResult>>>(
                     result.as_str().unwrap(),
                 ) {
                     Ok(d) => d.into(),
