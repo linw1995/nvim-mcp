@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **LSP Workspace Symbols**: Fixed `lsp_workspace_symbols` return type to use
+  `Option<DocumentSymbolResult>` instead of `WorkspaceSymbolResult` for
+  consistency with other LSP tools
+
 ### New Features
 
 - **Automatic Connection**: Added automatic connection feature with CLI support
