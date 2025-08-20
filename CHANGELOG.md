@@ -10,11 +10,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.5.0] - 2025-08-20
+
 ### Fixed
 
 - **LSP Workspace Symbols**: Fixed `lsp_workspace_symbols` return type to use
   `Option<DocumentSymbolResult>` instead of `WorkspaceSymbolResult` for
   consistency with other LSP tools
+- **Diagnostic Schema**: Relaxed Diagnostic JSON schema to accept code as
+  number or string for better compatibility
 
 ### New Features
 
@@ -37,6 +41,8 @@ Use at your own risk.
 
 - **Dynamic Tool System**: Sophisticated dynamic tool registration system through
   `HybridToolRouter` enabling extensible tool functionality without code changes
+- **Lua Integration**: Custom tool registration through Neovim configuration
+  using Lua functions with automatic discovery and validation
 - **Connection-Scoped Tools**: Tools automatically registered/unregistered with
   connection lifecycle for enhanced modularity
 - **Tool Visibility**: Enhanced tool visibility through new resource system
@@ -49,8 +55,8 @@ Use at your own risk.
   capabilities
 - **Tool Registration API**: Improved extensibility through dynamic tool
   registration API
-
-### Architecture Improvements
+- **MCP Helper Functions**: Lua plugin provides helper functions (`MCP.success`,
+  `MCP.error`, `MCP.text`, `MCP.json`) for creating compatible MCP responses
 
 ### New CLI Options
 
@@ -78,6 +84,7 @@ Use at your own risk.
 - Added `hyper` for high-performance HTTP server transport
 - Added `hyper-util` for HTTP utilities with server and service features
 - Added `tower-http` for HTTP middleware and CORS support
+- Added `jsonschema` for JSON Schema validation in Lua custom tool parameters
 - Updated `rmcp` to include streamable HTTP server transport features
 
 ## [v0.4.0] - 2025-08-16
