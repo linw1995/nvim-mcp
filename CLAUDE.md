@@ -92,13 +92,13 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 - **`src/server/core.rs`**: Core infrastructure and server foundation
   - Contains `NeovimMcpServer` struct and core methods
-  - Integrates `HybridToolRouter` for static and dynamic tool management
+  - Integrates `HybridToolRouter` for static and dynamic tool management ⚠️ **(Experimental)**
   - Manages multiple concurrent connections via
     `Arc<DashMap<String, Box<dyn NeovimClientTrait + Send>>>`
   - Handles multi-connection lifecycle with deterministic connection IDs
   - Provides utility functions (BLAKE3 hashing, socket discovery, etc.)
   - Error conversion between `NeovimError` and `McpError`
-  - Exposes dynamic tool registration API for connection-scoped tools
+  - Exposes dynamic tool registration API for connection-scoped tools ⚠️ **(Experimental)**
 
 - **`src/server/tools.rs`**: MCP tool implementations
   - Implements 23 MCP tools using the `#[tool]` attribute
@@ -106,14 +106,15 @@ The codebase follows a modular architecture with clear separation of concerns:
   - Focuses purely on MCP tool logic and protocol implementation
   - Clean separation from core infrastructure
 
-- **`src/server/hybrid_router.rs`**: Dynamic tool routing system
+- **`src/server/hybrid_router.rs`** ⚠️ **(Experimental)**: Dynamic tool routing system
   - Implements `HybridToolRouter` that combines static and dynamic tools
   - Supports connection-scoped dynamic tool registration
   - Provides automatic tool lifecycle management with connection cleanup
   - Uses lock-free concurrent data structures for high performance
   - Enables extensibility while maintaining backwards compatibility
 
-- **`src/server/lua_tools.rs`**: Lua custom tool integration system
+- **`src/server/lua_tools.rs`** ⚠️ **(Experimental)**: Lua custom tool
+  integration system
   - Implements `LuaToolConfig` structure for Lua-defined tool configuration
   - Provides `discover_lua_tools()` function for automatic tool discovery from Neovim
   - Implements `LuaToolValidator` for JSON Schema parameter validation
@@ -142,12 +143,13 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 This modular architecture provides several advantages:
 
-- **Clear Separation of Concerns**: Core infrastructure, MCP tools, dynamic routing,
-  and resource handlers are cleanly separated
+- **Clear Separation of Concerns**: Core infrastructure, MCP tools, and
+  resource handlers are cleanly separated (dynamic routing ⚠️
+  **experimental**)
 - **Extensibility**: `HybridToolRouter` enables dynamic tool registration
-  without code changes
+  without code changes ⚠️ **(Experimental)**
 - **Performance**: Lock-free concurrent data structures for high-throughput
-  tool routing
+  tool routing ⚠️ **(Experimental)**
 - **Easier Maintenance**: Each file has a single, well-defined responsibility
 - **Better Testing**: Components can be tested independently with focused unit tests
 - **Improved Readability**: Developers can quickly find relevant code based on functionality
@@ -159,8 +161,8 @@ This modular architecture provides several advantages:
 ### Data Flow
 
 1. **MCP Communication**: stdio/HTTP transport ↔ MCP client ↔ `NeovimMcpServer`
-2. **Tool Routing**: MCP tool request → `HybridToolRouter` →
-   static/dynamic tool execution
+2. **Tool Routing** ⚠️ **(Experimental)**: MCP tool request →
+   `HybridToolRouter` → static/dynamic tool execution
 3. **Neovim Integration**: `NeovimMcpServer` → `NeovimClientTrait` → `nvim-rs` →
    TCP/Unix socket → Neovim instance
 4. **Tool Execution**: Routed tool call → async Neovim API call → response
@@ -174,8 +176,8 @@ This modular architecture provides several advantages:
 - **Deterministic connection IDs** generated using BLAKE3 hash of target string
 - **Connection isolation**: Each connection operates independently with
   proper session isolation
-- **Dynamic tool lifecycle**: Connection-scoped tools automatically cleaned up
-  on disconnect
+- **Dynamic tool lifecycle** ⚠️ **(Experimental)**: Connection-scoped tools
+  automatically cleaned up on disconnect
 - **Proper cleanup** of TCP connections and background tasks on disconnect
 - **Connection validation** before tool execution using connection ID lookup
 
@@ -279,13 +281,15 @@ The server provides connection-aware resources via multiple URI schemes:
 - **`nvim-connections://`**: Lists all active Neovim connections with
   their IDs and targets
 
-**Tool Registration Overview:**
+**Tool Registration Overview** ⚠️ **(Experimental)**:
 
 - **`nvim-tools://`**: Overview of all tools and their connection mappings,
   showing static tools (available to all connections) and dynamic tools
   (connection-specific)
 - **`nvim-tools://{connection_id}`**: List of tools available for a specific
   connection, including both static and connection-specific dynamic tools
+
+*Note: Tool registration resources are experimental and may change in future versions.*
 
 **Connection-Scoped Diagnostics** via `nvim-diagnostics://` URI scheme:
 
@@ -298,7 +302,11 @@ Resources return structured JSON with diagnostic information including severity,
 messages, file paths, and line/column positions. Connection IDs are deterministic
 BLAKE3 hashes of the target string for consistent identification.
 
-## Dynamic Tool System
+## Dynamic Tool System ⚠️ **(Experimental)**
+
+⚠️ **Warning**: The dynamic tool system is experimental and unstable.
+It may change significantly or be removed in future versions without
+prior notice. Use at your own risk in production environments.
 
 The server includes a sophisticated dynamic tool registration system through
 `HybridToolRouter` with comprehensive Lua integration for user-extensible
@@ -464,7 +472,7 @@ the new `lua_tools.rs` module:
 - **`regex`**: Pattern matching for connection-scoped resource URI parsing
 - **`blake3`**: Fast, deterministic hashing for connection ID generation
 
-**Dynamic Tool System Dependencies:**
+**Dynamic Tool System Dependencies** ⚠️ **(Experimental)**:
 
 - **`jsonschema`**: JSON Schema validation for Lua custom tool parameters
 - **`serde_json`**: JSON serialization/deserialization with enhanced
@@ -482,7 +490,7 @@ the new `lua_tools.rs` module:
 - **`tempfile`**: Temporary file and directory management for integration tests
 - **Enhanced deserialization**: Support for both string and struct formats
   in CodeAction and WorkspaceEdit types
-- **Lua tool testing**: Integration tests for custom tool registration
+- **Lua tool testing** ⚠️ **(Experimental)**: Integration tests for custom tool registration
   and execution
 
 ## Testing Architecture
@@ -526,7 +534,7 @@ To add a new connection-aware tool to the server:
 5. **Testing**: Update integration tests in `src/server/integration_tests.rs`
 
 6. **Registration**: The tool is automatically registered by the
-   `#[tool_router]` macro and handled through `HybridToolRouter`
+   `#[tool_router]` macro and handled through `HybridToolRouter` ⚠️ **(Experimental)**
 
 **New Tool Parameter Structures:**
 
@@ -619,7 +627,7 @@ The project includes a comprehensive Neovim Lua plugin at
 - Provides a `setup()` function for initialization
 - Enables seamless MCP server connection without manual TCP setup
 
-**Custom Tool Registration:**
+**Custom Tool Registration** ⚠️ **(Experimental)**:
 
 - Supports user-defined custom tools through `custom_tools` configuration
 - Maintains a global tool registry (`_tool_registry`) for configured tools

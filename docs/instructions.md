@@ -280,7 +280,7 @@ The server provides connection-aware MCP resources via multiple URI schemes:
   - **Content**: JSON array of connection objects with `id` and `target`
   - **Usage**: Monitor active connections across multiple Neovim instances
 
-#### Tool Registration Resources
+#### Tool Registration Resources ⚠️ **(Experimental)**
 
 Connection-aware tool registration resources using `nvim-tools://` scheme:
 
@@ -293,6 +293,8 @@ Connection-aware tool registration resources using `nvim-tools://` scheme:
   - **Content**: JSON array of tool objects available for the specific connection
   - **Usage**: Get detailed view of tools available for a particular Neovim instance,
     including both static and connection-specific dynamic tools
+
+*Note: Tool registration resources are experimental and may change in future versions.*
 
 #### Diagnostic Resources
 

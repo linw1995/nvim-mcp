@@ -12,12 +12,6 @@ All notable changes to this project will be documented in this file.
 
 ### New Features
 
-- **Dynamic Tool System**: Sophisticated dynamic tool registration system through
-  `HybridToolRouter` enabling extensible tool functionality without code changes
-- **Connection-Scoped Tools**: Tools automatically registered/unregistered with
-  connection lifecycle for enhanced modularity
-- **Tool Registration Resources**: New `nvim-tools://` URI scheme for monitoring
-  tool availability and connection mappings
 - **Automatic Connection**: Added automatic connection feature with CLI support
   for seamless integration with current project Neovim instances
 - **Project-Scoped Auto-Discovery**: Automatically find and connect to Neovim
@@ -29,11 +23,28 @@ All notable changes to this project will be documented in this file.
 - **Multi-Transport Support**: Server now supports both stdio (default) and
   HTTP server transport modes for different integration scenarios
 
-### Architecture Improvements
+### Experimental Features (Unstable)
 
+⚠️ **Warning**: The following features are experimental and unstable. They may
+change significantly or be removed in future versions without prior notice.
+Use at your own risk.
+
+- **Dynamic Tool System**: Sophisticated dynamic tool registration system through
+  `HybridToolRouter` enabling extensible tool functionality without code changes
+- **Connection-Scoped Tools**: Tools automatically registered/unregistered with
+  connection lifecycle for enhanced modularity
+- **Tool Visibility**: Enhanced tool visibility through new resource system
+- **Tool Registration Resources**: New `nvim-tools://` URI scheme for monitoring
+  tool availability and connection mappings
 - **HybridToolRouter**: Combines static tools (from `#[tool_router]` macro) with
   dynamic tools using lock-free concurrent data structures
 - **Conflict Resolution**: Prevents naming conflicts between static and dynamic tools
+- **Dynamic Routing**: Enhanced modular architecture with dynamic routing
+  capabilities
+- **Tool Registration API**: Improved extensibility through dynamic tool
+  registration API
+
+### Architecture Improvements
 
 ### New CLI Options
 
@@ -55,23 +66,6 @@ All notable changes to this project will be documented in this file.
   if auto-connection fails
 - **Connection Validation**: Validates target formats and provides clear error
   messages for invalid targets
-
-### New Resources (2 additional)
-
-**Tool Registration Resources:**
-
-- `nvim-tools://` - Overview of all tools and their connection mappings,
-  showing static tools (available to all connections) and dynamic tools
-  (connection-specific)
-- `nvim-tools://{connection_id}` - List of tools available for a specific
-  connection, including both static and connection-specific dynamic tools
-
-### Technical Enhancements
-
-- Enhanced modular architecture with clear separation between core infrastructure,
-  MCP tools, dynamic routing, and resource handlers
-- Improved extensibility through dynamic tool registration API
-- Enhanced tool visibility through new resource system
 
 ### Dependencies
 
