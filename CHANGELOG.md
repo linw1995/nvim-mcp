@@ -29,6 +29,29 @@ All notable changes to this project will be documented in this file.
 - **Multi-Transport Support**: Server now supports both stdio (default) and
   HTTP server transport modes for different integration scenarios
 
+### Experimental Features (Unstable)
+
+⚠️ **Warning**: The following features are experimental and unstable. They may
+change significantly or be removed in future versions without prior notice.
+Use at your own risk.
+
+- **Dynamic Tool System**: Sophisticated dynamic tool registration system through
+  `HybridToolRouter` enabling extensible tool functionality without code changes
+- **Connection-Scoped Tools**: Tools automatically registered/unregistered with
+  connection lifecycle for enhanced modularity
+- **Tool Visibility**: Enhanced tool visibility through new resource system
+- **Tool Registration Resources**: New `nvim-tools://` URI scheme for monitoring
+  tool availability and connection mappings
+- **HybridToolRouter**: Combines static tools (from `#[tool_router]` macro) with
+  dynamic tools using lock-free concurrent data structures
+- **Conflict Resolution**: Prevents naming conflicts between static and dynamic tools
+- **Dynamic Routing**: Enhanced modular architecture with dynamic routing
+  capabilities
+- **Tool Registration API**: Improved extensibility through dynamic tool
+  registration API
+
+### Architecture Improvements
+
 ### New CLI Options
 
 - `--connect <MODE>` - Connection mode: 'manual' (default), 'auto', or specific
