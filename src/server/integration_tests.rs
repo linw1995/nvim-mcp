@@ -959,12 +959,13 @@ async fn test_lsp_organize_imports_non_existent_file() -> Result<(), Box<dyn std
 
     // Start a test Neovim instance
     let ipc_path = generate_random_ipc_path();
-    let _guard = setup_neovim_instance_ipc_advance(
+    let child = setup_neovim_instance_ipc_advance(
         &ipc_path,
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         get_testdata_path("organize_imports.go").to_str().unwrap(),
     )
     .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
     // Establish connection
     let connection_id = {
@@ -1036,12 +1037,13 @@ async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::
 
     // Start a test Neovim instance with LSP
     let ipc_path = generate_random_ipc_path();
-    let _guard = setup_neovim_instance_ipc_advance(
+    let child = setup_neovim_instance_ipc_advance(
         &ipc_path,
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         get_testdata_path("main.go").to_str().unwrap(),
     )
     .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
     time::sleep(Duration::from_secs(1)).await; // Ensure LSP is ready
 
@@ -1123,12 +1125,13 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
 
     // Start a test Neovim instance with LSP
     let ipc_path = generate_random_ipc_path();
-    let _guard = setup_neovim_instance_ipc_advance(
+    let child = setup_neovim_instance_ipc_advance(
         &ipc_path,
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         get_testdata_path("organize_imports.go").to_str().unwrap(),
     )
     .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
     time::sleep(Duration::from_secs(1)).await; // Ensure LSP is ready
 
@@ -1212,36 +1215,31 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
 
     info!("Connected to server");
 
-    let connection_id = {
-        info!("starting IPC Neovim for testing");
+    info!("starting IPC Neovim for testing");
 
-        let test_ipc_path = generate_random_socket_path();
-        let cfg_path = "src/testdata/cfg_lsp.lua";
-        let open_file = "src/testdata/main.go";
+    let ipc_path = generate_random_socket_path();
+    let cfg_path = "src/testdata/cfg_lsp.lua";
+    let open_file = "src/testdata/main.go";
 
-        let _neovim_child = crate::test_utils::setup_neovim_instance_ipc_advance(
-            &test_ipc_path,
-            cfg_path,
-            open_file,
-        )
-        .await;
+    let child =
+        crate::test_utils::setup_neovim_instance_ipc_advance(&ipc_path, cfg_path, open_file).await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
-        // Wait for Neovim to be ready
-        time::sleep(Duration::from_millis(2000)).await;
+    // Wait for Neovim to be ready
+    time::sleep(Duration::from_millis(2000)).await;
 
-        let mut connect_args = Map::new();
-        connect_args.insert("target".to_string(), Value::String(test_ipc_path));
+    let mut connect_args = Map::new();
+    connect_args.insert("target".to_string(), Value::String(ipc_path));
 
-        let result = service
-            .call_tool(CallToolRequestParam {
-                name: "connect".into(),
-                arguments: Some(connect_args),
-            })
-            .await?;
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "connect".into(),
+            arguments: Some(connect_args),
+        })
+        .await?;
 
-        // Setup Lua tools configuration in Neovim
-        extract_connection_id(&result)?
-    };
+    // Setup Lua tools configuration in Neovim
+    let connection_id = extract_connection_id(&result)?;
 
     // Test tool discovery by listing tools (should include our custom tool)
     let tools_result = service.list_tools(Default::default()).await?;
