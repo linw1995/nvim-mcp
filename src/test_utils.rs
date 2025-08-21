@@ -183,7 +183,7 @@ pub async fn setup_neovim_instance_advance(
     // Wait for Neovim to start and create the TCP socket
     let start = Instant::now();
     loop {
-        sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(50)).await;
 
         // Try to connect to see if Neovim is ready
         if tokio::net::TcpStream::connect(&listen).await.is_ok() {
@@ -224,7 +224,7 @@ pub async fn setup_neovim_instance_socket_advance(
     // Wait for Neovim to start and create the Unix socket
     let start = Instant::now();
     loop {
-        sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(50)).await;
 
         // Try to connect to see if Neovim is ready
         if UnixStream::connect(socket_path).await.is_ok() {
@@ -266,7 +266,7 @@ pub async fn setup_neovim_instance_pipe_advance(
     // Wait for Neovim to start and create the named pipe
     let start = Instant::now();
     loop {
-        sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(50)).await;
 
         // Try to connect to see if Neovim is ready
         if NamedPipeClient::connect(pipe_path).await.is_ok() {
@@ -334,7 +334,7 @@ pub async fn setup_test_neovim_instance(
     // Wait for Neovim to start and create the socket/pipe
     let start = Instant::now();
     loop {
-        sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(50)).await;
 
         // Try to connect to see if Neovim is ready
         #[cfg(unix)]

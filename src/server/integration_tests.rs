@@ -971,7 +971,7 @@ async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::
     .await;
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
-    time::sleep(Duration::from_secs(1)).await; // Ensure LSP is ready
+    time::sleep(Duration::from_millis(200)).await; // Ensure LSP is ready
 
     // Establish connection
     let connection_id = {
@@ -1049,7 +1049,7 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
     .await;
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
-    time::sleep(Duration::from_secs(1)).await; // Ensure LSP is ready
+    time::sleep(Duration::from_millis(200)).await; // Ensure LSP is ready
 
     // Establish connection
     let connection_id = {
@@ -1132,7 +1132,7 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
     // Wait for Neovim to be ready
-    time::sleep(Duration::from_millis(2000)).await;
+    time::sleep(Duration::from_millis(500)).await;
 
     let mut connect_args = Map::new();
     connect_args.insert("target".to_string(), Value::String(ipc_path));

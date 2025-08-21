@@ -196,7 +196,7 @@ async fn test_get_vim_diagnostics() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     let result = client.get_buffer_diagnostics(0).await;
     assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
@@ -232,7 +232,7 @@ async fn test_code_action() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     let result = client.get_buffer_diagnostics(0).await;
     assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
@@ -296,7 +296,7 @@ async fn test_lsp_resolve_code_action() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     // Position cursor inside fmt.Println call (line 6, character 6)
     let result = client
@@ -415,7 +415,7 @@ async fn test_lsp_apply_workspace_edit() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     // Get buffer diagnostics to find modernization opportunities
     let result = client.get_buffer_diagnostics(0).await;
@@ -473,7 +473,7 @@ async fn test_lsp_apply_workspace_edit() {
             assert!(result.is_ok(), "Failed to save buffer: {result:?}");
 
             // Give some time for the edit and save to be applied
-            sleep(Duration::from_millis(1000)).await;
+            sleep(Duration::from_millis(100)).await;
 
             // Read the modified content to verify the change
             let modified_content =
@@ -551,7 +551,7 @@ func main() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(2)).await; // Allow time for LSP to initialize
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -671,7 +671,7 @@ pub fn main() !void {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(2)).await; // Allow time for LSP to initialize
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -789,7 +789,7 @@ func main() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(2)).await; // Allow time for LSP to initialize
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -913,7 +913,7 @@ func main() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(2)).await; // Allow time for LSP to initialize
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1015,7 +1015,7 @@ async fn test_lsp_rename_with_prepare() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1062,7 +1062,7 @@ async fn test_lsp_rename_with_prepare() {
         assert!(result.is_ok(), "Failed to save buffer: {result:?}");
 
         // Give some time for the save operation to complete
-        sleep(Duration::from_millis(1000)).await;
+        sleep(Duration::from_millis(100)).await;
 
         // Read the file content to verify the rename was applied
         let updated_content =
@@ -1118,7 +1118,7 @@ async fn test_lsp_rename_without_prepare() {
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1165,7 +1165,7 @@ async fn test_lsp_rename_without_prepare() {
         assert!(result.is_ok(), "Failed to save buffer: {result:?}");
 
         // Give some time for the save operation to complete
-        sleep(Duration::from_millis(1000)).await;
+        sleep(Duration::from_millis(100)).await;
 
         // Read the file content to verify the rename was applied
         let updated_content =
@@ -1251,7 +1251,7 @@ main();
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     (temp_dir, guard, client)
 }
@@ -1348,7 +1348,7 @@ main();
         "Failed to setup diagnostics autocmd: {result:?}"
     );
 
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    sleep(Duration::from_secs(3)).await; // Allow time for LSP to initialize
 
     use crate::neovim::FormattingOptions;
     let tab_options = FormattingOptions {
