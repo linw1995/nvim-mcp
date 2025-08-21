@@ -5,13 +5,19 @@ use std::fmt::{self, Display};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use nvim_rs::{Handler, Neovim, create::tokio as create};
 use rmpv::Value;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
-use tokio::{io::AsyncWrite, net::TcpStream};
+use tokio::{
+    io::AsyncWrite,
+    net::TcpStream,
+    sync::Mutex,
+    time::{Duration, timeout},
+};
 use tracing::{debug, info, instrument};
 
 use super::{connection::NeovimConnection, error::NeovimError};
@@ -32,7 +38,14 @@ pub trait NeovimClientTrait: Sync {
     async fn execute_lua(&self, code: &str) -> Result<Value, NeovimError>;
 
     /// Set up diagnostics changed autocmd
-    async fn setup_diagnostics_changed_autocmd(&self) -> Result<(), NeovimError>;
+    async fn setup_autocmd(&self) -> Result<(), NeovimError>;
+
+    /// Wait for a specific notification with timeout
+    async fn wait_for_notification(
+        &self,
+        notification_name: &str,
+        timeout_ms: u64,
+    ) -> Result<Notification, NeovimError>;
 
     /// Get diagnostics for a specific buffer
     async fn get_buffer_diagnostics(&self, buffer_id: u64) -> Result<Vec<Diagnostic>, NeovimError>;
@@ -178,15 +191,117 @@ pub trait NeovimClientTrait: Sync {
     ) -> Result<(), NeovimError>;
 }
 
+/// Notification tracking structure
+#[derive(Debug, Clone)]
+pub struct Notification {
+    pub name: String,
+    pub args: Vec<Value>,
+    pub timestamp: std::time::SystemTime,
+}
+
+/// Shared state for notification tracking
+#[derive(Clone)]
+pub struct NotificationTracker {
+    notifications: Arc<Mutex<Vec<Notification>>>,
+    notify_wakers: Arc<Mutex<HashMap<String, Vec<tokio::sync::oneshot::Sender<Notification>>>>>,
+}
+
+impl NotificationTracker {
+    pub fn new() -> Self {
+        Self {
+            notifications: Arc::new(Mutex::new(Vec::new())),
+            notify_wakers: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Record a notification
+    pub async fn record_notification(&self, name: String, args: Vec<Value>) {
+        let notification = Notification {
+            name: name.clone(),
+            args,
+            timestamp: std::time::SystemTime::now(),
+        };
+
+        // Notify any waiting tasks for this specific notification name first
+        let mut wakers = self.notify_wakers.lock().await;
+        if let Some(waiters) = wakers.get_mut(&name) {
+            while let Some(waker) = waiters.pop() {
+                let _ = waker.send(notification.clone());
+            }
+        }
+
+        // Only store the notification if there are no more waiters for this type
+        // This prevents memory leaks from accumulating notifications
+        if wakers.get(&name).is_none_or(|waiters| waiters.is_empty()) {
+            let mut notifications = self.notifications.lock().await;
+            notifications.push(notification);
+        }
+    }
+
+    /// Wait for a specific notification with timeout
+    pub async fn wait_for_notification(
+        &self,
+        notification_name: &str,
+        timeout_duration: Duration,
+    ) -> Result<Notification, NeovimError> {
+        // First check if the notification already exists
+        {
+            let notifications = self.notifications.lock().await;
+            if let Some(notification) = notifications
+                .iter()
+                .rev()
+                .find(|n| n.name == notification_name)
+            {
+                return Ok(notification.clone());
+            }
+        }
+
+        // Create a oneshot channel to wait for the notification
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        // Register our interest in this notification
+        let mut wakers = self.notify_wakers.lock().await;
+        wakers
+            .entry(notification_name.to_string())
+            .or_insert_with(Vec::new)
+            .push(tx);
+
+        // Wait for the notification with timeout
+        drop(wakers); // Release the lock before awaiting
+
+        match timeout(timeout_duration, rx).await {
+            Ok(Ok(notification)) => Ok(notification),
+            Ok(Err(_)) => Err(NeovimError::Api(
+                "Notification channel closed unexpectedly".to_string(),
+            )),
+            Err(_) => Err(NeovimError::Api(format!(
+                "Timeout waiting for notification: {}",
+                notification_name
+            ))),
+        }
+    }
+
+    /// Clear all recorded notifications
+    pub async fn clear_notifications(&self) {
+        self.notifications.lock().await.clear();
+    }
+}
+
 pub struct NeovimHandler<T> {
     _marker: std::marker::PhantomData<T>,
+    notification_tracker: NotificationTracker,
 }
 
 impl<T> NeovimHandler<T> {
     pub fn new() -> Self {
         NeovimHandler {
             _marker: std::marker::PhantomData,
+            notification_tracker: NotificationTracker::new(),
         }
+    }
+
+    pub fn notification_tracker(&self) -> NotificationTracker {
+        self.notification_tracker.clone()
     }
 }
 
@@ -194,6 +309,7 @@ impl<T> Clone for NeovimHandler<T> {
     fn clone(&self) -> Self {
         NeovimHandler {
             _marker: std::marker::PhantomData,
+            notification_tracker: self.notification_tracker.clone(),
         }
     }
 }
@@ -207,6 +323,9 @@ where
 
     async fn handle_notify(&self, name: String, args: Vec<Value>, _neovim: Neovim<T>) {
         info!("handling notification: {name:?}, {args:?}");
+        self.notification_tracker
+            .record_notification(name, args)
+            .await;
     }
 
     async fn handle_request(
@@ -1040,6 +1159,7 @@ where
     T: AsyncWrite + Send + 'static,
 {
     connection: Option<NeovimConnection<T>>,
+    notification_tracker: Option<NotificationTracker>,
 }
 
 #[cfg(unix)]
@@ -1103,6 +1223,7 @@ impl NeovimClient<Connection> {
 
         debug!("Attempting to connect to Neovim at {}", path);
         let handler = NeovimHandler::new();
+        let notification_tracker = handler.notification_tracker();
         match create::new_path(path, handler).await {
             Ok((nvim, io_handler)) => {
                 let connection = NeovimConnection::new(
@@ -1115,6 +1236,7 @@ impl NeovimClient<Connection> {
                     path.to_string(),
                 );
                 self.connection = Some(connection);
+                self.notification_tracker = Some(notification_tracker);
                 debug!("Successfully connected to Neovim at {}", path);
                 Ok(())
             }
@@ -1138,6 +1260,7 @@ impl NeovimClient<TcpStream> {
 
         debug!("Attempting to connect to Neovim at {}", address);
         let handler = NeovimHandler::new();
+        let notification_tracker = handler.notification_tracker();
         match create::new_tcp(address, handler).await {
             Ok((nvim, io_handler)) => {
                 let connection = NeovimConnection::new(
@@ -1150,6 +1273,7 @@ impl NeovimClient<TcpStream> {
                     address.to_string(),
                 );
                 self.connection = Some(connection);
+                self.notification_tracker = Some(notification_tracker);
                 debug!("Successfully connected to Neovim at {}", address);
                 Ok(())
             }
@@ -1166,7 +1290,10 @@ where
     T: AsyncWrite + Send + 'static,
 {
     pub fn new() -> Self {
-        Self { connection: None }
+        Self {
+            connection: None,
+            notification_tracker: None,
+        }
     }
 
     #[instrument(skip(self))]
@@ -1309,6 +1436,12 @@ where
         if let Some(connection) = self.connection.take() {
             let target = connection.target().to_string();
             connection.io_handler.abort();
+
+            // Clear notification tracker to free memory
+            if let Some(tracker) = self.notification_tracker.take() {
+                tracker.clear_notifications().await;
+            }
+
             debug!("Successfully disconnected from Neovim at {}", target);
             Ok(target)
         } else {
@@ -1371,8 +1504,8 @@ where
     }
 
     #[instrument(skip(self))]
-    async fn setup_diagnostics_changed_autocmd(&self) -> Result<(), NeovimError> {
-        debug!("Setting up diagnostics changed autocmd");
+    async fn setup_autocmd(&self) -> Result<(), NeovimError> {
+        debug!("Setting up autocmd");
 
         let conn = self.connection.as_ref().ok_or_else(|| {
             NeovimError::Connection("Not connected to any Neovim instance".to_string())
@@ -1380,18 +1513,16 @@ where
 
         match conn
             .nvim
-            .exec_lua(include_str!("lua/diagnostics_autocmd.lua"), vec![])
+            .exec_lua(include_str!("lua/setup_autocmd.lua"), vec![])
             .await
         {
             Ok(_) => {
-                debug!("Autocmd for diagnostics changed set up successfully");
+                debug!("autocmd set up successfully");
                 Ok(())
             }
             Err(e) => {
-                debug!("Failed to set up diagnostics changed autocmd: {}", e);
-                Err(NeovimError::Api(format!(
-                    "Failed to set up diagnostics changed autocmd: {e}"
-                )))
+                debug!("Failed to set up autocmd: {}", e);
+                Err(NeovimError::Api(format!("Failed to set up autocmd: {e}")))
             }
         }
     }
@@ -2393,6 +2524,26 @@ where
             }
         }
     }
+
+    #[instrument(skip(self))]
+    async fn wait_for_notification(
+        &self,
+        notification_name: &str,
+        timeout_ms: u64,
+    ) -> Result<Notification, NeovimError> {
+        debug!(
+            "Waiting for notification: {} with timeout: {}ms",
+            notification_name, timeout_ms
+        );
+
+        let tracker = self.notification_tracker.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        tracker
+            .wait_for_notification(notification_name, Duration::from_millis(timeout_ms))
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -2901,5 +3052,82 @@ mod tests {
         let deserialized: WorkspaceEditWrapper = serde_json::from_value(json_string).unwrap();
         let deserialized = deserialized.workspace_edit;
         assert!(deserialized.changes.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_notification_tracker_basic() {
+        let tracker = NotificationTracker::new();
+
+        // Test recording a notification
+        tracker
+            .record_notification(
+                "test_notification".to_string(),
+                vec![Value::from("test_arg")],
+            )
+            .await;
+
+        // Test waiting for the notification
+        let result = tracker
+            .wait_for_notification("test_notification", Duration::from_millis(100))
+            .await;
+
+        assert!(result.is_ok());
+        let notification = result.unwrap();
+        assert_eq!(notification.name, "test_notification");
+        assert_eq!(notification.args.len(), 1);
+        assert_eq!(notification.args[0].as_str().unwrap(), "test_arg");
+    }
+
+    #[tokio::test]
+    async fn test_notification_tracker_timeout() {
+        let tracker = NotificationTracker::new();
+
+        // Test waiting for a notification that never comes (should timeout)
+        let result = tracker
+            .wait_for_notification("nonexistent_notification", Duration::from_millis(50))
+            .await;
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, NeovimError::Api(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("Timeout waiting for notification")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_notification_tracker_wait_then_send() {
+        let tracker = NotificationTracker::new();
+
+        // Spawn a task that will wait for a notification
+        let wait_handle = tokio::spawn({
+            let tracker = tracker.clone();
+            async move {
+                tracker
+                    .wait_for_notification("test_async_notification", Duration::from_millis(500))
+                    .await
+            }
+        });
+
+        // Give the waiting task a moment to start waiting
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Now send the notification
+        tracker
+            .record_notification(
+                "test_async_notification".to_string(),
+                vec![Value::from("async_test_arg")],
+            )
+            .await;
+
+        // The waiting task should now receive the notification
+        let result = wait_handle.await.unwrap();
+        assert!(result.is_ok());
+        let notification = result.unwrap();
+        assert_eq!(notification.name, "test_async_notification");
+        assert_eq!(notification.args.len(), 1);
+        assert_eq!(notification.args[0].as_str().unwrap(), "async_test_arg");
     }
 }

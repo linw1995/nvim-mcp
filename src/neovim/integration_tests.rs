@@ -190,7 +190,7 @@ async fn test_get_vim_diagnostics() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and get diagnostics for buffer 0
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -226,7 +226,7 @@ async fn test_code_action() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -290,7 +290,7 @@ async fn test_lsp_resolve_code_action() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -409,7 +409,7 @@ async fn test_lsp_apply_workspace_edit() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -545,7 +545,7 @@ func main() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -665,7 +665,7 @@ pub fn main() !void {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -783,7 +783,7 @@ func main() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -907,7 +907,7 @@ func main() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -1009,7 +1009,7 @@ async fn test_lsp_rename_with_prepare() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -1112,7 +1112,7 @@ async fn test_lsp_rename_without_prepare() {
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -1245,7 +1245,7 @@ main();
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"
@@ -1342,7 +1342,7 @@ main();
     assert!(result.is_ok(), "Failed to connect to instance");
 
     // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
+    let result = client.setup_autocmd().await;
     assert!(
         result.is_ok(),
         "Failed to setup diagnostics autocmd: {result:?}"

@@ -358,7 +358,7 @@ impl NeovimMcpServer {
 
         let mut client = NeovimClient::new();
         client.connect_path(&path).await?;
-        client.setup_diagnostics_changed_autocmd().await?;
+        client.setup_autocmd().await?;
 
         // Discover and register Lua tools for this connection
         if let Err(e) =
@@ -410,7 +410,7 @@ impl NeovimMcpServer {
 
         let mut client = NeovimClient::new();
         client.connect_tcp(&address).await?;
-        client.setup_diagnostics_changed_autocmd().await?;
+        client.setup_autocmd().await?;
 
         // Discover and register Lua tools for this connection
         if let Err(e) =

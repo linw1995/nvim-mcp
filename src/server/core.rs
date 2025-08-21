@@ -240,7 +240,7 @@ pub async fn auto_connect_single_target(
     // Import NeovimClient here to avoid circular imports
     let mut client = crate::neovim::NeovimClient::new();
     client.connect_path(target).await?;
-    client.setup_diagnostics_changed_autocmd().await?;
+    client.setup_autocmd().await?;
 
     server
         .nvim_clients
