@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
@@ -8,7 +7,7 @@ use rmcp::{
     service::ServiceExt,
     transport::TokioChildProcess,
 };
-use tokio::{process::Command, time};
+use tokio::process::Command;
 use tracing::{error, info};
 use tracing_test::traced_test;
 
@@ -971,8 +970,6 @@ async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::
     .await;
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
-    time::sleep(Duration::from_millis(200)).await; // Ensure LSP is ready
-
     // Establish connection
     let connection_id = {
         let mut connect_args = Map::new();
@@ -988,6 +985,27 @@ async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::
         info!("Connection established successfully");
         extract_connection_id(&result)?
     };
+
+    // Wait for LSP client (gopls) to be ready
+    let mut wait_lsp_args = Map::new();
+    wait_lsp_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    wait_lsp_args.insert(
+        "client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    wait_lsp_args.insert("timeout_ms".to_string(), Value::Number(5000.into()));
+
+    service
+        .call_tool(CallToolRequestParam {
+            name: "wait_for_lsp_ready".into(),
+            arguments: Some(wait_lsp_args),
+        })
+        .await?;
+
+    info!("LSP client ready");
 
     // Test lsp_organize_imports with apply_edits=true
     let mut args = Map::new();
@@ -1049,8 +1067,6 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
     .await;
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
-    time::sleep(Duration::from_millis(200)).await; // Ensure LSP is ready
-
     // Establish connection
     let connection_id = {
         let mut connect_args = Map::new();
@@ -1066,6 +1082,27 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
         info!("Connection established successfully");
         extract_connection_id(&result)?
     };
+
+    // Wait for LSP client (gopls) to be ready
+    let mut wait_lsp_args = Map::new();
+    wait_lsp_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    wait_lsp_args.insert(
+        "client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    wait_lsp_args.insert("timeout_ms".to_string(), Value::Number(5000.into()));
+
+    service
+        .call_tool(CallToolRequestParam {
+            name: "wait_for_lsp_ready".into(),
+            arguments: Some(wait_lsp_args),
+        })
+        .await?;
+
+    info!("LSP client ready");
 
     // Test lsp_organize_imports with apply_edits=false (inspect mode)
     let mut inspect_args = Map::new();
@@ -1131,8 +1168,7 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
         crate::test_utils::setup_neovim_instance_ipc_advance(&ipc_path, cfg_path, open_file).await;
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
 
-    // Wait for Neovim to be ready
-    time::sleep(Duration::from_millis(500)).await;
+    // Neovim should be ready for connection immediately after process start
 
     let mut connect_args = Map::new();
     connect_args.insert("target".to_string(), Value::String(ipc_path));

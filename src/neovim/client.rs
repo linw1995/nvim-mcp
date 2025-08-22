@@ -47,6 +47,20 @@ pub trait NeovimClientTrait: Sync {
         timeout_ms: u64,
     ) -> Result<Notification, NeovimError>;
 
+    /// Wait for LSP client to be ready and attached
+    async fn wait_for_lsp_ready(
+        &self,
+        client_name: Option<&str>,
+        timeout_ms: u64,
+    ) -> Result<(), NeovimError>;
+
+    /// Wait for diagnostics to be available for a specific buffer or workspace
+    async fn wait_for_diagnostics(
+        &self,
+        buffer_id: Option<u64>,
+        timeout_ms: u64,
+    ) -> Result<Vec<Diagnostic>, NeovimError>;
+
     /// Get diagnostics for a specific buffer
     async fn get_buffer_diagnostics(&self, buffer_id: u64) -> Result<Vec<Diagnostic>, NeovimError>;
 
@@ -206,11 +220,34 @@ pub struct NotificationTracker {
     notify_wakers: Arc<Mutex<HashMap<String, Vec<tokio::sync::oneshot::Sender<Notification>>>>>,
 }
 
+/// Configuration for notification cleanup
+const MAX_STORED_NOTIFICATIONS: usize = 100;
+const NOTIFICATION_EXPIRY_SECONDS: u64 = 30;
+
 impl NotificationTracker {
     pub fn new() -> Self {
         Self {
             notifications: Arc::new(Mutex::new(Vec::new())),
             notify_wakers: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Clean up expired and excess notifications
+    async fn cleanup_notifications(&self) {
+        let mut notifications = self.notifications.lock().await;
+
+        // Remove expired notifications
+        let now = std::time::SystemTime::now();
+        notifications.retain(|n| {
+            now.duration_since(n.timestamp)
+                .map(|d| d.as_secs() < NOTIFICATION_EXPIRY_SECONDS)
+                .unwrap_or(false)
+        });
+
+        // If still too many notifications, keep only the most recent ones
+        if notifications.len() > MAX_STORED_NOTIFICATIONS {
+            let excess = notifications.len() - MAX_STORED_NOTIFICATIONS;
+            notifications.drain(0..excess);
         }
     }
 
@@ -230,11 +267,21 @@ impl NotificationTracker {
             }
         }
 
-        // Only store the notification if there are no more waiters for this type
-        // This prevents memory leaks from accumulating notifications
-        if wakers.get(&name).is_none_or(|waiters| waiters.is_empty()) {
+        // Clean up wakers with no waiters
+        wakers.retain(|_, waiters| !waiters.is_empty());
+        drop(wakers); // Release lock early
+
+        // Always store recent notifications for potential future requests
+        // but clean up old/excess ones to prevent memory leaks
+        {
             let mut notifications = self.notifications.lock().await;
             notifications.push(notification);
+
+            // Trigger cleanup if we're approaching the limit
+            if notifications.len() > MAX_STORED_NOTIFICATIONS * 3 / 4 {
+                drop(notifications); // Release lock before calling cleanup
+                self.cleanup_notifications().await;
+            }
         }
     }
 
@@ -244,13 +291,21 @@ impl NotificationTracker {
         notification_name: &str,
         timeout_duration: Duration,
     ) -> Result<Notification, NeovimError> {
-        // First check if the notification already exists
+        // First check if a recent (non-expired) notification already exists
         {
             let notifications = self.notifications.lock().await;
+            let now = std::time::SystemTime::now();
+
             if let Some(notification) = notifications
                 .iter()
-                .rev()
-                .find(|n| n.name == notification_name)
+                .rev() // Check most recent first
+                .find(|n| {
+                    n.name == notification_name
+                        && now
+                            .duration_since(n.timestamp)
+                            .map(|d| d.as_secs() < NOTIFICATION_EXPIRY_SECONDS)
+                            .unwrap_or(false)
+                })
             {
                 return Ok(notification.clone());
             }
@@ -283,7 +338,20 @@ impl NotificationTracker {
 
     /// Clear all recorded notifications
     pub async fn clear_notifications(&self) {
-        self.notifications.lock().await.clear();
+        let mut notifications = self.notifications.lock().await;
+        notifications.clear();
+    }
+
+    /// Manually trigger cleanup of expired notifications
+    pub async fn cleanup_expired_notifications(&self) {
+        self.cleanup_notifications().await;
+    }
+
+    /// Get current notification statistics (for debugging/monitoring)
+    pub async fn get_stats(&self) -> (usize, usize) {
+        let notifications = self.notifications.lock().await;
+        let wakers = self.notify_wakers.lock().await;
+        (notifications.len(), wakers.len())
     }
 }
 
@@ -2544,6 +2612,101 @@ where
             .wait_for_notification(notification_name, Duration::from_millis(timeout_ms))
             .await
     }
+
+    #[instrument(skip(self))]
+    async fn wait_for_lsp_ready(
+        &self,
+        client_name: Option<&str>,
+        timeout_ms: u64,
+    ) -> Result<(), NeovimError> {
+        debug!(
+            "Waiting for LSP client readiness: {:?} with timeout: {}ms",
+            client_name, timeout_ms
+        );
+
+        // Wait for NVIM_MCP_LspAttach notification
+        let notification = self
+            .wait_for_notification("NVIM_MCP_LspAttach", timeout_ms)
+            .await?;
+
+        // If specific client name is requested, verify it matches
+        if let Some(expected_client_name) = client_name {
+            // Parse the notification args to check client name
+            if let Some(attach_data) = notification.args.first() {
+                // Extract client_name from the nvim_rs::Value
+                if let Value::Map(map) = attach_data {
+                    // Find the client_name key-value pair in the map
+                    let client_name_key = Value::String("client_name".into());
+                    let client_name_value = map
+                        .iter()
+                        .find(|(k, _)| k == &client_name_key)
+                        .map(|(_, v)| v);
+
+                    if let Some(Value::String(actual_client_name)) = client_name_value {
+                        let actual_str = actual_client_name.as_str().unwrap_or("");
+                        if actual_str != expected_client_name {
+                            return Err(NeovimError::Api(format!(
+                                "LSP client '{}' attached but expected '{}'",
+                                actual_str, expected_client_name
+                            )));
+                        }
+                    } else {
+                        return Err(NeovimError::Api(
+                            "LSP attach notification missing or invalid client_name".to_string(),
+                        ));
+                    }
+                } else {
+                    return Err(NeovimError::Api(
+                        "LSP attach notification data is not a map".to_string(),
+                    ));
+                }
+            } else {
+                return Err(NeovimError::Api(
+                    "LSP attach notification missing data".to_string(),
+                ));
+            }
+        }
+
+        debug!("LSP client readiness confirmed");
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn wait_for_diagnostics(
+        &self,
+        buffer_id: Option<u64>,
+        timeout_ms: u64,
+    ) -> Result<Vec<Diagnostic>, NeovimError> {
+        debug!(
+            "Waiting for diagnostics for buffer {:?} with timeout: {}ms",
+            buffer_id, timeout_ms
+        );
+
+        // First try to get diagnostics immediately
+        match self.get_diagnostics(buffer_id).await {
+            Ok(diagnostics) if !diagnostics.is_empty() => {
+                debug!("Found {} diagnostics immediately", diagnostics.len());
+                return Ok(diagnostics);
+            }
+            Ok(_) => {
+                // No diagnostics found, wait for diagnostic notification
+                debug!("No diagnostics found, waiting for notification");
+            }
+            Err(e) => {
+                debug!("Error getting diagnostics: {}, waiting for notification", e);
+            }
+        }
+
+        // Wait for diagnostic notification
+        let notification = self
+            .wait_for_notification("NVIM_MCP_DiagnosticsChanged", timeout_ms)
+            .await?;
+
+        debug!("Received diagnostics notification: {:?}", notification);
+
+        // After notification, try to get diagnostics again
+        self.get_diagnostics(buffer_id).await
+    }
 }
 
 #[cfg(test)]
@@ -3129,5 +3292,115 @@ mod tests {
         assert_eq!(notification.name, "test_async_notification");
         assert_eq!(notification.args.len(), 1);
         assert_eq!(notification.args[0].as_str().unwrap(), "async_test_arg");
+    }
+
+    #[tokio::test]
+    async fn test_notification_cleanup_expired() {
+        let tracker = NotificationTracker::new();
+
+        // Record a notification with a modified timestamp (simulate old notification)
+        let old_notification = Notification {
+            name: "old_notification".to_string(),
+            args: vec![Value::from("old_data")],
+            timestamp: std::time::SystemTime::now()
+                - Duration::from_secs(NOTIFICATION_EXPIRY_SECONDS + 1),
+        };
+
+        // Manually insert old notification to simulate existing data
+        {
+            let mut notifications = tracker.notifications.lock().await;
+            notifications.push(old_notification);
+        }
+
+        // Record a fresh notification
+        tracker
+            .record_notification(
+                "fresh_notification".to_string(),
+                vec![Value::from("fresh_data")],
+            )
+            .await;
+
+        // Check initial state
+        let (count_before, _) = tracker.get_stats().await;
+        assert_eq!(count_before, 2);
+
+        // Trigger cleanup
+        tracker.cleanup_expired_notifications().await;
+
+        // Old notification should be removed, fresh one should remain
+        let (count_after, _) = tracker.get_stats().await;
+        assert_eq!(count_after, 1);
+
+        // Verify the remaining notification is the fresh one
+        let result = tracker
+            .wait_for_notification("fresh_notification", Duration::from_millis(10))
+            .await;
+        assert!(result.is_ok());
+
+        // Verify old notification is gone
+        let result = tracker
+            .wait_for_notification("old_notification", Duration::from_millis(10))
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_notification_cleanup_excess() {
+        let tracker = NotificationTracker::new();
+
+        // Record more than MAX_STORED_NOTIFICATIONS
+        for i in 0..(MAX_STORED_NOTIFICATIONS + 10) {
+            tracker
+                .record_notification(format!("notification_{}", i), vec![Value::from(i as i64)])
+                .await;
+        }
+
+        // Get current count
+        let (count, _) = tracker.get_stats().await;
+
+        // Should be limited to MAX_STORED_NOTIFICATIONS due to automatic cleanup
+        assert!(count <= MAX_STORED_NOTIFICATIONS);
+
+        // The most recent notifications should still be available
+        let result = tracker
+            .wait_for_notification(
+                &format!("notification_{}", MAX_STORED_NOTIFICATIONS + 9),
+                Duration::from_millis(10),
+            )
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_notification_expiry_in_wait() {
+        let tracker = NotificationTracker::new();
+
+        // Create an expired notification manually
+        let expired_notification = Notification {
+            name: "expired_test".to_string(),
+            args: vec![Value::from("expired_data")],
+            timestamp: std::time::SystemTime::now()
+                - Duration::from_secs(NOTIFICATION_EXPIRY_SECONDS + 1),
+        };
+
+        // Manually insert expired notification
+        {
+            let mut notifications = tracker.notifications.lock().await;
+            notifications.push(expired_notification);
+        }
+
+        // wait_for_notification should not return expired notification
+        let result = tracker
+            .wait_for_notification("expired_test", Duration::from_millis(50))
+            .await;
+
+        // Should timeout because expired notification is ignored
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Timeout waiting for notification")
+        );
     }
 }
