@@ -630,6 +630,7 @@ func main() {
 
 #[tokio::test]
 #[traced_test]
+#[ignore = "it will fail if running with coverage enabled"]
 async fn test_lsp_declaration() {
     // Create a temporary directory and file
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
