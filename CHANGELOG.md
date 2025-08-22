@@ -10,6 +10,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### New Features
+
+- **LSP Readiness Tool**: Added `wait_for_lsp_ready` tool for ensuring LSP client
+  readiness before performing operations, improving reliability of LSP workflows
+
+### Improved
+
+- **Configurable LSP Timeout**: Added `NeovimClientConfig` with configurable LSP
+  timeout settings (default: 3000ms) for better control over LSP operation timing
+- **Enhanced Notification Tracking**: Comprehensive notification tracking system
+  for robust LSP synchronization and event handling
+- **Autocmd Setup**: Unified autocmd setup replacing diagnostics-specific
+  implementation with more comprehensive event handling
+- **Test Performance**: Optimized integration tests with better timing and
+  one-time binary compilation for improved CI performance
+
 ## [v0.5.0] - 2025-08-20
 
 ### Fixed

@@ -4,7 +4,7 @@
 
 ### Tools
 
-The server provides 23 MCP tools for interacting with Neovim instances:
+The server provides 24 MCP tools for interacting with Neovim instances:
 
 #### Connection Management
 
@@ -47,6 +47,16 @@ All tools below require a `connection_id` parameter from connection establishmen
     - `code` (string): Lua code to execute
   - **Returns**: Object with execution result
   - **Usage**: Run Neovim commands, get editor state, or modify configuration
+
+- **`wait_for_lsp_ready`**: Wait for LSP client to be ready and attached
+  - **Parameters**:
+    - `connection_id` (string): Target Neovim instance ID
+    - `client_name` (string, optional): Specific LSP client name to wait for
+      (waits for any if not specified)
+    - `timeout_ms` (number, optional): Timeout in milliseconds (default: 5000ms)
+  - **Returns**: Success confirmation with client readiness status
+  - **Usage**: Ensure LSP client is ready before performing LSP operations
+    for reliable results
 
 - **`buffer_diagnostics`**: Get diagnostics for specific buffer
   - **Parameters**:
