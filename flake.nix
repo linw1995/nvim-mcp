@@ -60,6 +60,7 @@
             packages = with pkgs; [
               # Development
               rust-analyzer-nightly
+              cargo-tarpaulin
               pre-commit
 
               # Integration tests
@@ -119,6 +120,17 @@
               description = "MCP server for Neovim";
             };
             program = lib.getExe self.packages.${system}.nvim-mcp;
+          };
+          cov = {
+            type = "app";
+            meta = {
+              description = "Run tests with coverage";
+            };
+            program = lib.getExe (pkgs.writeShellScriptBin "test-coverage" ''
+              export CARGO_TARGET_DIR="$PWD/target/coverage"
+              rm -rf $CARGO_TARGET_DIR/tarpaulin/profraws
+              cargo tarpaulin --skip-clean "$@"
+            '');
           };
         };
       }

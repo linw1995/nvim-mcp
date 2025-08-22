@@ -21,11 +21,61 @@ fn get_compiled_binary() -> PathBuf {
         .get_or_init(|| {
             info!("Compiling nvim-mcp binary (one-time compilation)...");
 
-            // Build the binary using cargo build
-            let output = std::process::Command::new("cargo")
-                .args(["build", "--bin", "nvim-mcp"])
-                .output()
-                .expect("Failed to execute cargo build");
+            // Check if we're running under tarpaulin for coverage
+            let is_tarpaulin = std::env::var("CARGO_TARPAULIN").is_ok();
+
+            let mut command = std::process::Command::new("cargo");
+
+            if is_tarpaulin {
+                info!("Running under tarpaulin - using coverage compilation flags");
+
+                // Get tarpaulin compilation flags
+                let tarpaulin_flags_output = std::process::Command::new("cargo")
+                    .args(["tarpaulin", "--print-rust-flags"])
+                    .output()
+                    .expect("Failed to execute cargo tarpaulin --print-rust-flags");
+
+                if !tarpaulin_flags_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&tarpaulin_flags_output.stderr);
+                    panic!("Failed to get tarpaulin flags: {}", stderr);
+                }
+
+                let tarpaulin_flags = String::from_utf8_lossy(&tarpaulin_flags_output.stdout);
+
+                // Parse the flags - tarpaulin outputs RUSTFLAGS="..." format
+                // We need to extract just the flags part inside the quotes
+                let flags = if let Some(start) = tarpaulin_flags.find('"') {
+                    if let Some(end) = tarpaulin_flags.rfind('"') {
+                        if start < end {
+                            &tarpaulin_flags[start + 1..end]
+                        } else {
+                            ""
+                        }
+                    } else {
+                        ""
+                    }
+                } else {
+                    ""
+                };
+
+                if flags.is_empty() {
+                    panic!(
+                        "Failed to parse tarpaulin flags from output: {}",
+                        tarpaulin_flags
+                    );
+                }
+
+                info!("Using tarpaulin flags: {}", flags);
+
+                // Set RUSTFLAGS environment variable for coverage compilation
+                command.env("RUSTFLAGS", flags);
+                command.args(["build", "--bin", "nvim-mcp"]);
+            } else {
+                // Normal build for regular cargo test
+                command.args(["build", "--bin", "nvim-mcp"]);
+            }
+
+            let output = command.output().expect("Failed to execute cargo build");
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -33,10 +83,20 @@ fn get_compiled_binary() -> PathBuf {
             }
 
             // Determine the binary path
-            let manifest_dir =
-                std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-            let mut binary_path = PathBuf::from(manifest_dir);
-            binary_path.push("target");
+            let target_dir = {
+                std::env::var("CARGO_TARGET_DIR")
+                    .map(PathBuf::from)
+                    .or_else(|_| {
+                        // Default to target directory if not set
+                        std::env::var("CARGO_MANIFEST_DIR").map(|dir| {
+                            let mut path = PathBuf::from(dir);
+                            path.push("target");
+                            path
+                        })
+                    })
+                    .expect("Failed to determine target directory")
+            };
+            let mut binary_path = target_dir;
             binary_path.push("debug");
             binary_path.push("nvim-mcp");
 
