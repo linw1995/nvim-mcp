@@ -63,6 +63,5 @@ jobs:
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v5
         with:
-          file: ./cobertura.xml
           token: ${{secrets.CODECOV_TOKEN}}
           fail_ci_if_error: github.actor != 'dependabot[bot]'
