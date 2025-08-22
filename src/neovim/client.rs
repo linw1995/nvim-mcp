@@ -343,12 +343,14 @@ impl NotificationTracker {
     }
 
     /// Manually trigger cleanup of expired notifications
-    pub async fn cleanup_expired_notifications(&self) {
+    #[allow(dead_code)]
+    pub(crate) async fn cleanup_expired_notifications(&self) {
         self.cleanup_notifications().await;
     }
 
     /// Get current notification statistics (for debugging/monitoring)
-    pub async fn get_stats(&self) -> (usize, usize) {
+    #[allow(dead_code)]
+    pub(crate) async fn get_stats(&self) -> (usize, usize) {
         let notifications = self.notifications.lock().await;
         let wakers = self.notify_wakers.lock().await;
         (notifications.len(), wakers.len())
@@ -1222,12 +1224,28 @@ pub struct RenameRequestParams {
     pub new_name: String,
 }
 
+/// Configuration for Neovim client operations
+#[derive(Debug, Clone)]
+pub struct NeovimClientConfig {
+    /// Timeout in milliseconds for LSP operations (default: 3000ms)
+    pub lsp_timeout_ms: u64,
+}
+
+impl Default for NeovimClientConfig {
+    fn default() -> Self {
+        Self {
+            lsp_timeout_ms: 3000,
+        }
+    }
+}
+
 pub struct NeovimClient<T>
 where
     T: AsyncWrite + Send + 'static,
 {
     connection: Option<NeovimConnection<T>>,
     notification_tracker: Option<NotificationTracker>,
+    config: NeovimClientConfig,
 }
 
 #[cfg(unix)]
@@ -1361,7 +1379,15 @@ where
         Self {
             connection: None,
             notification_tracker: None,
+            config: NeovimClientConfig::default(),
         }
+    }
+
+    /// Configure the Neovim client with custom settings
+    #[allow(dead_code)]
+    pub fn with_config(mut self, config: NeovimClientConfig) -> Self {
+        self.config = config;
+        self
     }
 
     #[instrument(skip(self))]
@@ -1689,7 +1715,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                     Value::from(buffer_id),   // bufnr
                 ],
             )
@@ -1744,7 +1770,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                     Value::from(buffer_id),   // bufnr
                 ],
             )
@@ -1797,7 +1823,7 @@ where
                     Value::from(
                         serde_json::to_string(&DocumentSymbolParams { text_document }).unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                     Value::from(buffer_id),   // bufnr
                 ],
             )
@@ -1847,7 +1873,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                 ],
             )
             .await
@@ -1910,7 +1936,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                     Value::from(buffer_id),   // bufnr
                 ],
             )
@@ -1967,7 +1993,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                 ],
             )
             .await
@@ -2020,7 +2046,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                 ],
             )
             .await
@@ -2073,7 +2099,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                 ],
             )
             .await
@@ -2126,7 +2152,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                 ],
             )
             .await
@@ -2274,7 +2300,7 @@ where
                         })
                         .unwrap(),
                     ),
-                    Value::from(1000),
+                    Value::from(self.config.lsp_timeout_ms),
                     Value::from(buffer_id),
                 ],
             )
@@ -2392,7 +2418,7 @@ where
                         })
                         .unwrap(),
                     ),
-                    Value::from(1000), // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                 ],
             )
             .await
@@ -2456,7 +2482,7 @@ where
                         })
                         .unwrap(),
                     ),
-                    Value::from(1000), // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                 ],
             )
             .await
@@ -2526,7 +2552,7 @@ where
                         })
                         .unwrap(),
                     ), // params
-                    Value::from(1000),        // timeout_ms
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
                     Value::from(buffer_id),   // bufnr
                 ],
             )
