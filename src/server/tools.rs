@@ -47,6 +47,23 @@ pub struct ExecuteLuaRequest {
     pub code: String,
 }
 
+/// Wait for LSP client readiness parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct WaitForLspReadyRequest {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Optional specific LSP client name to wait for (waits for any client if None)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    /// Timeout in milliseconds (default 5000ms)
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+}
+
+fn default_timeout() -> u64 {
+    5000
+}
+
 /// Workspace symbols parameters
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct WorkspaceSymbolsParams {
@@ -358,7 +375,7 @@ impl NeovimMcpServer {
 
         let mut client = NeovimClient::new();
         client.connect_path(&path).await?;
-        client.setup_diagnostics_changed_autocmd().await?;
+        client.setup_autocmd().await?;
 
         // Discover and register Lua tools for this connection
         if let Err(e) =
@@ -410,7 +427,7 @@ impl NeovimMcpServer {
 
         let mut client = NeovimClient::new();
         client.connect_tcp(&address).await?;
-        client.setup_diagnostics_changed_autocmd().await?;
+        client.setup_autocmd().await?;
 
         // Discover and register Lua tools for this connection
         if let Err(e) =
@@ -506,6 +523,29 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "result": format!("{:?}", result)
+            }),
+        )?]))
+    }
+
+    #[tool(description = "Wait for LSP client to be ready and attached")]
+    #[instrument(skip(self))]
+    pub async fn wait_for_lsp_ready(
+        &self,
+        Parameters(WaitForLspReadyRequest {
+            connection_id,
+            client_name,
+            timeout_ms,
+        }): Parameters<WaitForLspReadyRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        client
+            .wait_for_lsp_ready(client_name.as_deref(), timeout_ms)
+            .await?;
+        Ok(CallToolResult::success(vec![Content::json(
+            serde_json::json!({
+                "message": "LSP client ready",
+                "client_name": client_name.unwrap_or_else(|| "any".to_string()),
+                "timeout_ms": timeout_ms
             }),
         )?]))
     }

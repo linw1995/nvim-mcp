@@ -219,7 +219,7 @@ and resources - only the transport layer changes.
 
 ## Available Tools
 
-The server provides 23 MCP tools for interacting with Neovim:
+The server provides 24 MCP tools for interacting with Neovim:
 
 ### Connection Management
 
@@ -365,6 +365,11 @@ providing enhanced flexibility for code analysis and navigation.
 
 - **`exec_lua`**: Execute Lua code in Neovim
   - Parameters: `connection_id` (string), `code` (string) - Lua code to execute
+
+- **`wait_for_lsp_ready`**: Wait for LSP client to be ready and attached
+  - Parameters: `connection_id` (string), `client_name` (string, optional),
+    `timeout_ms` (number, optional, default: 5000ms)
+  - Returns: Success confirmation with LSP client readiness status
 
 ### Complete LSP Code Action Workflow
 

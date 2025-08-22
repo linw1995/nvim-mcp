@@ -134,6 +134,9 @@ The codebase follows a modular architecture with clear separation of concerns:
   - Supports both TCP and Unix socket/named pipe connections
   - Provides high-level operations: buffer management, diagnostics, LSP integration
   - Handles Lua code execution and autocmd setup
+  - Includes configurable LSP timeout settings via `NeovimClientConfig`
+  - Features comprehensive notification tracking system for LSP synchronization
+  - Provides methods for waiting on LSP readiness and diagnostic availability
 
 - **`src/neovim/connection.rs`**: Connection management layer
   - Wraps `nvim-rs` client with lifecycle management
@@ -210,7 +213,7 @@ This modular architecture provides several advantages:
 
 ### Available MCP Tools
 
-The server provides these 23 tools (implemented with `#[tool]` attribute):
+The server provides these 24 tools (implemented with `#[tool]` attribute):
 
 **Connection Management:**
 
@@ -224,30 +227,31 @@ The server provides these 23 tools (implemented with `#[tool]` attribute):
 
 1. **`list_buffers`**: List all open buffers for specific connection
 2. **`exec_lua`**: Execute arbitrary Lua code in specific Neovim instance
-3. **`buffer_diagnostics`**: Get diagnostics for specific buffer on specific connection
-4. **`lsp_clients`**: Get workspace LSP clients for specific connection
-5. **`lsp_workspace_symbols`**: Search workspace symbols by query on specific
+3. **`wait_for_lsp_ready`**: Wait for LSP client to be ready and attached with timeout
+4. **`buffer_diagnostics`**: Get diagnostics for specific buffer on specific connection
+5. **`lsp_clients`**: Get workspace LSP clients for specific connection
+6. **`lsp_workspace_symbols`**: Search workspace symbols by query on specific
    connection
-6. **`lsp_code_actions`**: Get LSP code actions with universal document
+7. **`lsp_code_actions`**: Get LSP code actions with universal document
    identification (supports buffer IDs, project-relative paths, and absolute paths)
-7. **`lsp_hover`**: Get LSP hover information with universal document
+8. **`lsp_hover`**: Get LSP hover information with universal document
    identification (supports buffer IDs, project-relative paths, and absolute paths)
-8. **`lsp_document_symbols`**: Get document symbols with universal document
+9. **`lsp_document_symbols`**: Get document symbols with universal document
    identification (supports buffer IDs, project-relative paths, and absolute paths)
-9. **`lsp_references`**: Get LSP references with universal document
+10. **`lsp_references`**: Get LSP references with universal document
    identification (supports buffer IDs, project-relative paths, and absolute paths)
-10. **`lsp_resolve_code_action`**: Resolve code actions that may have
+11. **`lsp_resolve_code_action`**: Resolve code actions that may have
     incomplete data
-11. **`lsp_apply_edit`**: Apply workspace edits using Neovim's LSP utility
+12. **`lsp_apply_edit`**: Apply workspace edits using Neovim's LSP utility
     functions
-12. **`lsp_definition`**: Get LSP definition with universal document identification
-13. **`lsp_type_definition`**: Get LSP type definition with universal document identification
-14. **`lsp_implementations`**: Get LSP implementations with universal document identification
-15. **`lsp_declaration`**: Get LSP declaration with universal document identification
-16. **`lsp_rename`**: Rename symbol across workspace using LSP
-17. **`lsp_formatting`**: Format document using LSP with optional auto-apply
-18. **`lsp_range_formatting`**: Format a specific range in a document using LSP
-19. **`lsp_organize_imports`**: Sort and organize imports using LSP with
+13. **`lsp_definition`**: Get LSP definition with universal document identification
+14. **`lsp_type_definition`**: Get LSP type definition with universal document identification
+15. **`lsp_implementations`**: Get LSP implementations with universal document identification
+16. **`lsp_declaration`**: Get LSP declaration with universal document identification
+17. **`lsp_rename`**: Rename symbol across workspace using LSP
+18. **`lsp_formatting`**: Format document using LSP with optional auto-apply
+19. **`lsp_range_formatting`**: Format a specific range in a document using LSP
+20. **`lsp_organize_imports`**: Sort and organize imports using LSP with
     auto-apply by default
 
 ### Universal Document Identifier System
@@ -505,6 +509,9 @@ the new `lua_tools.rs` module:
   lsp_apply_edit
 - **Test data**: Includes Go source files and LSP configuration for realistic
   testing scenarios
+- **Enhanced reliability**: Robust LSP synchronization with notification tracking
+- **Optimized timing**: Better test performance with improved setup and teardown
+- **Notification testing**: Unit tests for notification tracking system
 
 ## Error Handling
 

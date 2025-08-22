@@ -1,14 +1,42 @@
 use std::fs;
-use std::time::Duration;
 
 use tempfile::TempDir;
-use tokio::time::sleep;
 use tracing::info;
 use tracing_test::traced_test;
 
 use crate::neovim::client::{DocumentIdentifier, Position, Range};
-use crate::neovim::{NeovimClient, NeovimClientTrait};
+use crate::neovim::{NeovimClient, NeovimClientTrait, NeovimError};
 use crate::test_utils::*;
+
+// Test helper functions to reduce boilerplate
+
+/// Helper function to wait for LSP analysis to complete (LSP ready + diagnostics)
+async fn wait_for_lsp_analysis_complete(
+    client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
+    timeout_ms: u64,
+) -> Result<(), NeovimError> {
+    client.wait_for_lsp_ready(None, timeout_ms).await?;
+    client.wait_for_diagnostics(None, timeout_ms).await?;
+    Ok(())
+}
+
+/// Helper for complete LSP setup including autocmd setup and waiting for analysis
+async fn setup_lsp_with_analysis(
+    client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
+) -> Result<(), NeovimError> {
+    client.setup_autocmd().await?;
+    wait_for_lsp_analysis_complete(client, 5000).await?;
+    Ok(())
+}
+
+/// Helper for LSP setup that only waits for LSP readiness (no diagnostics)
+async fn setup_lsp_ready_only(
+    client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
+) -> Result<(), NeovimError> {
+    client.setup_autocmd().await?;
+    client.wait_for_lsp_ready(None, 5000).await?;
+    Ok(())
+}
 
 #[tokio::test]
 #[traced_test]
@@ -189,14 +217,10 @@ async fn test_get_vim_diagnostics() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and get diagnostics for buffer 0
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for analysis to complete
+    setup_lsp_with_analysis(&mut client)
+        .await
+        .expect("LSP setup and analysis should complete");
 
     let result = client.get_buffer_diagnostics(0).await;
     assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
@@ -225,14 +249,10 @@ async fn test_code_action() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for analysis to complete
+    setup_lsp_with_analysis(&mut client)
+        .await
+        .expect("LSP setup and analysis should complete");
 
     let result = client.get_buffer_diagnostics(0).await;
     assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
@@ -289,14 +309,10 @@ async fn test_lsp_resolve_code_action() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for readiness
+    setup_lsp_ready_only(&mut client)
+        .await
+        .expect("LSP setup should complete");
 
     // Position cursor inside fmt.Println call (line 6, character 6)
     let result = client
@@ -408,14 +424,10 @@ async fn test_lsp_apply_workspace_edit() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for analysis to complete
+    setup_lsp_with_analysis(&mut client)
+        .await
+        .expect("LSP setup and analysis should complete");
 
     // Get buffer diagnostics to find modernization opportunities
     let result = client.get_buffer_diagnostics(0).await;
@@ -472,8 +484,7 @@ async fn test_lsp_apply_workspace_edit() {
             let result = client.execute_lua("vim.cmd('write')").await;
             assert!(result.is_ok(), "Failed to save buffer: {result:?}");
 
-            // Give some time for the edit and save to be applied
-            sleep(Duration::from_millis(1000)).await;
+            // File operations should be synchronous in Neovim
 
             // Read the modified content to verify the change
             let modified_content =
@@ -544,14 +555,10 @@ func main() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for readiness
+    setup_lsp_ready_only(&mut client)
+        .await
+        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -664,14 +671,10 @@ pub fn main() !void {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for analysis to complete
+    setup_lsp_with_analysis(&mut client)
+        .await
+        .expect("LSP setup and analysis should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -782,14 +785,10 @@ func main() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for readiness
+    setup_lsp_ready_only(&mut client)
+        .await
+        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -906,14 +905,10 @@ func main() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(15)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for readiness
+    setup_lsp_ready_only(&mut client)
+        .await
+        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1008,14 +1003,10 @@ async fn test_lsp_rename_with_prepare() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for readiness
+    setup_lsp_ready_only(&mut client)
+        .await
+        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1061,8 +1052,7 @@ async fn test_lsp_rename_with_prepare() {
         let result = client.execute_lua("vim.cmd('write')").await;
         assert!(result.is_ok(), "Failed to save buffer: {result:?}");
 
-        // Give some time for the save operation to complete
-        sleep(Duration::from_millis(1000)).await;
+        // File operations should be synchronous in Neovim
 
         // Read the file content to verify the rename was applied
         let updated_content =
@@ -1111,14 +1101,10 @@ async fn test_lsp_rename_without_prepare() {
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for readiness
+    setup_lsp_ready_only(&mut client)
+        .await
+        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1164,8 +1150,7 @@ async fn test_lsp_rename_without_prepare() {
         let result = client.execute_lua("vim.cmd('write')").await;
         assert!(result.is_ok(), "Failed to save buffer: {result:?}");
 
-        // Give some time for the save operation to complete
-        sleep(Duration::from_millis(1000)).await;
+        // File operations should be synchronous in Neovim
 
         // Read the file content to verify the rename was applied
         let updated_content =
@@ -1244,14 +1229,10 @@ main();
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for analysis to complete
+    setup_lsp_with_analysis(&mut client)
+        .await
+        .expect("LSP setup and analysis should complete");
 
     (temp_dir, guard, client)
 }
@@ -1341,14 +1322,10 @@ main();
     let result = client.connect_path(&ipc_path).await;
     assert!(result.is_ok(), "Failed to connect to instance");
 
-    // Set up diagnostics and wait for LSP
-    let result = client.setup_diagnostics_changed_autocmd().await;
-    assert!(
-        result.is_ok(),
-        "Failed to setup diagnostics autocmd: {result:?}"
-    );
-
-    sleep(Duration::from_secs(20)).await; // Allow time for LSP to initialize
+    // Set up LSP and wait for analysis to complete
+    setup_lsp_with_analysis(&mut client)
+        .await
+        .expect("LSP setup and analysis should complete");
 
     use crate::neovim::FormattingOptions;
     let tab_options = FormattingOptions {
