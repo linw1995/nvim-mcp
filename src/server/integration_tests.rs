@@ -83,20 +83,7 @@ fn get_compiled_binary() -> PathBuf {
             }
 
             // Determine the binary path
-            let target_dir = {
-                std::env::var("CARGO_TARGET_DIR")
-                    .map(PathBuf::from)
-                    .or_else(|_| {
-                        // Default to target directory if not set
-                        std::env::var("CARGO_MANIFEST_DIR").map(|dir| {
-                            let mut path = PathBuf::from(dir);
-                            path.push("target");
-                            path
-                        })
-                    })
-                    .expect("Failed to determine target directory")
-            };
-            let mut binary_path = target_dir;
+            let mut binary_path = get_target_dir();
             binary_path.push("debug");
             binary_path.push("nvim-mcp");
 
@@ -112,6 +99,20 @@ fn get_compiled_binary() -> PathBuf {
             binary_path
         })
         .clone()
+}
+
+fn get_target_dir() -> PathBuf {
+    std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            // Default to target directory if not set
+            std::env::var("CARGO_MANIFEST_DIR").map(|dir| {
+                let mut path = PathBuf::from(dir);
+                path.push("target");
+                path
+            })
+        })
+        .expect("Failed to determine target directory")
 }
 
 /// Macro to create an MCP service using the pre-compiled binary

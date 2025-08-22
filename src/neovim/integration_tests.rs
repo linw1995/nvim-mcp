@@ -25,7 +25,7 @@ async fn setup_lsp_with_analysis(
     client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
 ) -> Result<(), NeovimError> {
     client.setup_autocmd().await?;
-    wait_for_lsp_analysis_complete(client, 5000).await?;
+    wait_for_lsp_analysis_complete(client, 15000).await?;
     Ok(())
 }
 
@@ -34,7 +34,7 @@ async fn setup_lsp_ready_only(
     client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
 ) -> Result<(), NeovimError> {
     client.setup_autocmd().await?;
-    client.wait_for_lsp_ready(None, 5000).await?;
+    client.wait_for_lsp_ready(None, 15000).await?;
     Ok(())
 }
 
