@@ -128,8 +128,9 @@
             };
             program = lib.getExe (pkgs.writeShellScriptBin "test-coverage" ''
               export CARGO_TARGET_DIR="$PWD/target/coverage"
+              export CARGO_TARPAULIN=1
               rm -rf $CARGO_TARGET_DIR/tarpaulin/profraws
-              cargo tarpaulin --skip-clean "$@"
+              cargo tarpaulin "$@"
             '');
           };
         };

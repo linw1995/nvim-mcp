@@ -5,7 +5,7 @@ use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
     serde_json::{Map, Value},
     service::ServiceExt,
-    transport::TokioChildProcess,
+    transport::{ConfigureCommandExt, TokioChildProcess},
 };
 use tokio::process::Command;
 use tracing::{error, info};
@@ -21,59 +21,8 @@ fn get_compiled_binary() -> PathBuf {
         .get_or_init(|| {
             info!("Compiling nvim-mcp binary (one-time compilation)...");
 
-            // Check if we're running under tarpaulin for coverage
-            let is_tarpaulin = std::env::var("CARGO_TARPAULIN").is_ok();
-
             let mut command = std::process::Command::new("cargo");
-
-            if is_tarpaulin {
-                info!("Running under tarpaulin - using coverage compilation flags");
-
-                // Get tarpaulin compilation flags
-                let tarpaulin_flags_output = std::process::Command::new("cargo")
-                    .args(["tarpaulin", "--print-rust-flags"])
-                    .output()
-                    .expect("Failed to execute cargo tarpaulin --print-rust-flags");
-
-                if !tarpaulin_flags_output.status.success() {
-                    let stderr = String::from_utf8_lossy(&tarpaulin_flags_output.stderr);
-                    panic!("Failed to get tarpaulin flags: {}", stderr);
-                }
-
-                let tarpaulin_flags = String::from_utf8_lossy(&tarpaulin_flags_output.stdout);
-
-                // Parse the flags - tarpaulin outputs RUSTFLAGS="..." format
-                // We need to extract just the flags part inside the quotes
-                let flags = if let Some(start) = tarpaulin_flags.find('"') {
-                    if let Some(end) = tarpaulin_flags.rfind('"') {
-                        if start < end {
-                            &tarpaulin_flags[start + 1..end]
-                        } else {
-                            ""
-                        }
-                    } else {
-                        ""
-                    }
-                } else {
-                    ""
-                };
-
-                if flags.is_empty() {
-                    panic!(
-                        "Failed to parse tarpaulin flags from output: {}",
-                        tarpaulin_flags
-                    );
-                }
-
-                info!("Using tarpaulin flags: {}", flags);
-
-                // Set RUSTFLAGS environment variable for coverage compilation
-                command.env("RUSTFLAGS", flags);
-                command.args(["build", "--bin", "nvim-mcp"]);
-            } else {
-                // Normal build for regular cargo test
-                command.args(["build", "--bin", "nvim-mcp"]);
-            }
+            command.args(["build", "--bin", "nvim-mcp"]);
 
             let output = command.output().expect("Failed to execute cargo build");
 
@@ -118,8 +67,31 @@ fn get_target_dir() -> PathBuf {
 /// Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
     () => {{
-        let binary_path = get_compiled_binary();
-        ().serve(TokioChildProcess::new(Command::new(binary_path))?)
+        // Check if we're running under tarpaulin for coverage
+        // let is_tarpaulin = std::env::var("CARGO_TARPAULIN").is_ok();
+        let is_tarpaulin = false;
+
+        let command = if is_tarpaulin {
+            info!("Running under tarpaulin, using cargo tarpaulin to run the binary");
+            Command::new("cargo").configure(|cmd| {
+                cmd.args([
+                    "tarpaulin",
+                    "--ignore-config",
+                    "--engine",
+                    "Llvm",
+                    "--command",
+                    "Build",
+                    "--skip-clean",
+                    "--follow-exec",
+                ])
+                .envs(std::env::vars()); // Pass current env vars
+            })
+        } else {
+            let binary_path = get_compiled_binary();
+            Command::new(binary_path)
+        };
+
+        ().serve(TokioChildProcess::new(command)?)
             .await
             .map_err(|e| {
                 error!("Failed to connect to server: {}", e);
