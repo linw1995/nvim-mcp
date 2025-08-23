@@ -97,14 +97,14 @@
             meta = {
               description = "Run tests";
             };
-            program = lib.getExe self.packages.${system}.test;
+            program = lib.getExe self.packages.${system}.run-test;
           };
           cov = {
             type = "app";
             meta = {
               description = "Run tests with coverage";
             };
-            program = lib.getExe self.packages.${system}.cov;
+            program = lib.getExe self.packages.${system}.run-cov;
           };
         };
         devShells = {
