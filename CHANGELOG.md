@@ -25,6 +25,10 @@ All notable changes to this project will be documented in this file.
   implementation with more comprehensive event handling
 - **Test Performance**: Optimized integration tests with better timing and
   one-time binary compilation for improved CI performance
+- **Code Coverage**: Use **grcov** for LLVM-based code coverage
+  with HTML, Cobertura, and Markdown report generation
+- **CI Coverage Integration**: Added codecov.io integration with automated
+  coverage reporting in GitHub Actions
 
 ## [v0.5.0] - 2025-08-20
 

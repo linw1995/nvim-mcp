@@ -530,8 +530,14 @@ cargo test -- --show-output
 # Skip integration tests (which require Neovim)
 cargo test -- --skip=integration_tests --show-output
 
+# Run tests with coverage reporting
+nix run .#cov -- --show-output
+
 # In Nix environment
 nix develop . --command cargo test -- --show-output
+
+# Alternative test runner
+nix run .#test -- --show-output
 ```
 
 **Note**: If already in a Nix shell, omit the `nix develop . --command` prefix.

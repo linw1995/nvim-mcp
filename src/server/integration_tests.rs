@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
@@ -13,52 +12,39 @@ use tracing_test::traced_test;
 
 use crate::test_utils::*;
 
-static BINARY_PATH: OnceLock<PathBuf> = OnceLock::new();
-
-/// Get the compiled binary path, compiling only once
 fn get_compiled_binary() -> PathBuf {
-    BINARY_PATH
-        .get_or_init(|| {
-            info!("Compiling nvim-mcp binary (one-time compilation)...");
-
-            // Build the binary using cargo build
-            let output = std::process::Command::new("cargo")
-                .args(["build", "--bin", "nvim-mcp"])
-                .output()
-                .expect("Failed to execute cargo build");
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                panic!("Failed to compile nvim-mcp binary: {}", stderr);
-            }
-
-            // Determine the binary path
-            let manifest_dir =
-                std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-            let mut binary_path = PathBuf::from(manifest_dir);
-            binary_path.push("target");
-            binary_path.push("debug");
-            binary_path.push("nvim-mcp");
-
-            // On Windows, add .exe extension
-            #[cfg(windows)]
-            binary_path.set_extension("exe");
-
-            if !binary_path.exists() {
-                panic!("Binary not found at expected path: {:?}", binary_path);
-            }
-
-            info!("Binary compiled successfully at: {:?}", binary_path);
+    let mut binary_path = get_target_dir();
+    binary_path.push("debug");
+    binary_path.push("nvim-mcp");
+    if !binary_path.exists() {
+        panic!(
+            "Compiled binary not found at {:?}. Please run `cargo build` first.",
             binary_path
+        );
+    }
+
+    binary_path
+}
+
+fn get_target_dir() -> PathBuf {
+    std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            // Default to target directory if not set
+            std::env::var("CARGO_MANIFEST_DIR").map(|dir| {
+                let mut path = PathBuf::from(dir);
+                path.push("target");
+                path
+            })
         })
-        .clone()
+        .expect("Failed to determine target directory")
 }
 
 /// Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
     () => {{
-        let binary_path = get_compiled_binary();
-        ().serve(TokioChildProcess::new(Command::new(binary_path))?)
+        let command = Command::new(get_compiled_binary());
+        ().serve(TokioChildProcess::new(command)?)
             .await
             .map_err(|e| {
                 error!("Failed to connect to server: {}", e);

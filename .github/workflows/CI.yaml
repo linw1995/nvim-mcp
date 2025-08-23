@@ -57,5 +57,11 @@ jobs:
       - name: Run nix flake check
         run: nix flake check --all-systems
 
-      - name: Run integration tests
-        run: cargo test -- --show-output
+      - name: Run integration tests with coverage
+        run: run-cov -- --show-output
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          fail_ci_if_error: github.actor != 'dependabot[bot]'
