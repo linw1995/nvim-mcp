@@ -5,6 +5,8 @@ export LLVM_PROFILE_FILE="${CARGO_TARGET_DIR}/data/nvim-mcp-%p-%m.profraw"
 cargo build --bin nvim-mcp
 cargo test "$@"
 
+echo "Generating code coverage report..."
+
 mkdir -p ${CARGO_TARGET_DIR}/result/
 grcov ${CARGO_TARGET_DIR}/data \
 	--llvm \

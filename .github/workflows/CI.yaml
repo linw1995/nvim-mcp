@@ -58,7 +58,7 @@ jobs:
         run: nix flake check --all-systems
 
       - name: Run integration tests with coverage
-        run: nix run .#cov -- --out xml -- --show-output
+        run: run-cov -- --show-output
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v5
