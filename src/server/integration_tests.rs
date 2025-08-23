@@ -1,11 +1,10 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
     serde_json::{Map, Value},
     service::ServiceExt,
-    transport::{ConfigureCommandExt, TokioChildProcess},
+    transport::TokioChildProcess,
 };
 use tokio::process::Command;
 use tracing::{error, info};
@@ -13,41 +12,19 @@ use tracing_test::traced_test;
 
 use crate::test_utils::*;
 
-static BINARY_PATH: OnceLock<PathBuf> = OnceLock::new();
-
 /// Get the compiled binary path, compiling only once
 fn get_compiled_binary() -> PathBuf {
-    BINARY_PATH
-        .get_or_init(|| {
-            info!("Compiling nvim-mcp binary (one-time compilation)...");
-
-            let mut command = std::process::Command::new("cargo");
-            command.args(["build", "--bin", "nvim-mcp"]);
-
-            let output = command.output().expect("Failed to execute cargo build");
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                panic!("Failed to compile nvim-mcp binary: {}", stderr);
-            }
-
-            // Determine the binary path
-            let mut binary_path = get_target_dir();
-            binary_path.push("debug");
-            binary_path.push("nvim-mcp");
-
-            // On Windows, add .exe extension
-            #[cfg(windows)]
-            binary_path.set_extension("exe");
-
-            if !binary_path.exists() {
-                panic!("Binary not found at expected path: {:?}", binary_path);
-            }
-
-            info!("Binary compiled successfully at: {:?}", binary_path);
+    let mut binary_path = get_target_dir();
+    binary_path.push("debug");
+    binary_path.push("nvim-mcp");
+    if !binary_path.exists() {
+        panic!(
+            "Compiled binary not found at {:?}. Please run `cargo build` first.",
             binary_path
-        })
-        .clone()
+        );
+    }
+
+    binary_path
 }
 
 fn get_target_dir() -> PathBuf {
@@ -67,26 +44,7 @@ fn get_target_dir() -> PathBuf {
 /// Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
     () => {{
-        // Check if we're running under tarpaulin for coverage
-        // let is_tarpaulin = std::env::var("CARGO_TARPAULIN").is_ok();
-        let is_tarpaulin = false;
-
-        let command = if is_tarpaulin {
-            info!("Running under tarpaulin, using cargo tarpaulin to run the binary");
-            Command::new("cargo").configure(|cmd| {
-                cmd.args([
-                    "tarpaulin",
-                    "--ignore-config",
-                    "--engine",
-                    "Llvm",
-                    "--command",
-                    "Build",
-                    "--skip-clean",
-                    "--follow-exec",
-                ])
-                .envs(std::env::vars()); // Pass current env vars
-            })
-        } else {
+        let command = {
             let binary_path = get_compiled_binary();
             Command::new(binary_path)
         };

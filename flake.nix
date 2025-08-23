@@ -55,12 +55,13 @@
                 "rust-src"
                 "rustc"
                 "rustfmt"
+                "llvm-tools"
               ])
             ];
             packages = with pkgs; [
               # Development
               rust-analyzer-nightly
-              cargo-tarpaulin
+              grcov
               pre-commit
 
               # Integration tests
@@ -121,16 +122,42 @@
             };
             program = lib.getExe self.packages.${system}.nvim-mcp;
           };
+          test = {
+            type = "app";
+            meta = {
+              description = "Run tests";
+            };
+            program = lib.getExe (pkgs.writeShellScriptBin "test" ''
+              cargo build --bin nvim-mcp
+              cargo test "$@"
+            '');
+          };
           cov = {
             type = "app";
             meta = {
               description = "Run tests with coverage";
             };
             program = lib.getExe (pkgs.writeShellScriptBin "test-coverage" ''
+              export RUSTFLAGS="-Cinstrument-coverage"
               export CARGO_TARGET_DIR="$PWD/target/coverage"
-              export CARGO_TARPAULIN=1
-              rm -rf $CARGO_TARGET_DIR/tarpaulin/profraws
-              cargo tarpaulin "$@"
+              export LLVM_PROFILE_FILE="$CARGO_TARGET_DIR/data/nvim-mcp-%p-%m.profraw"
+
+              cargo build --bin nvim-mcp
+              cargo test "$@"
+
+              mkdir -p $CARGO_TARGET_DIR/result/
+              grcov $CARGO_TARGET_DIR/data \
+                --llvm \
+                --branch \
+                --source-dir . \
+                --ignore-not-existing \
+                --ignore '../*' --ignore "/*" \
+                --binary-path $CARGO_TARGET_DIR/debug/ \
+                --output-types html,cobertura,markdown \
+                --output-path $CARGO_TARGET_DIR/result/
+              tail -n 1 $CARGO_TARGET_DIR/result/markdown.md
+              #xmllint --xpath "concat('Coverage: ', 100 * string(//coverage/@line-rate), '%')" \
+              #  $CARGO_TARGET_DIR/result/cobertura.xml
             '');
           };
         };
