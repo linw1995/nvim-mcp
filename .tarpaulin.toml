@@ -1,6 +1,0 @@
-[test]
-engine = "Llvm"
-command = "Test"
-skip-clean = true
-follow-exec = true
-target-dir = "target/coverage"

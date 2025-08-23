@@ -63,19 +63,28 @@ nix develop .
 
 ```bash
 # Run all tests
-cargo test -- --show-output
+./scripts/run-test.sh -- --show-output
 
 # Run single specific module test
-cargo test -- --show-output neovim::integration_tests
+./scripts/run-test.sh -- --show-output neovim::integration_tests
 
 # Run single specific test
-cargo test -- --show-output neovim::integration_tests::test_tcp_connection_lifecycle
+./scripts/run-test.sh -- --show-output neovim::integration_tests::test_tcp_connection_lifecycle
 
 # Skip integration tests (which require Neovim)
-cargo test -- --skip=integration_tests --show-output 1
+./scripts/run-test.sh -- --skip=integration_tests --show-output
+
+# Run tests with coverage using grcov
+nix run .#cov -- --show-output
+
+# Run specific tests with coverage
+nix run .#cov -- --show-output neovim::integration_tests
 
 # Run tests in Nix environment (requires IN_NIX_SHELL not set)
-nix develop . --command cargo test -- --show-output 1
+nix develop . --command ./scripts/run-test.sh -- --show-output
+
+# Alternative: Use nix test app
+nix run .#test -- --show-output
 ```
 
 **Note**: The `nix develop . --command` syntax only works when the
@@ -492,6 +501,7 @@ the new `lua_tools.rs` module:
 **Testing and Development Dependencies:**
 
 - **`tempfile`**: Temporary file and directory management for integration tests
+- **`grcov`**: Code coverage reporting tool using LLVM instrumentation
 - **Enhanced deserialization**: Support for both string and struct formats
   in CodeAction and WorkspaceEdit types
 - **Lua tool testing** ⚠️ **(Experimental)**: Integration tests for custom tool registration
@@ -512,6 +522,8 @@ the new `lua_tools.rs` module:
 - **Enhanced reliability**: Robust LSP synchronization with notification tracking
 - **Optimized timing**: Better test performance with improved setup and teardown
 - **Notification testing**: Unit tests for notification tracking system
+- **Code coverage**: LLVM-based code coverage using grcov with HTML, Cobertura,
+  and Markdown report generation
 
 ## Error Handling
 
@@ -609,7 +621,8 @@ use rmcp::{ErrorData as McpError, /* other MCP types */};
 This project uses Nix flakes for reproducible development environments.
 The flake provides:
 
-- Rust toolchain (stable) with clippy, rustfmt, and rust-analyzer
+- Rust toolchain (stable) with clippy, rustfmt, rust-analyzer, and LLVM tools
+- grcov for code coverage analysis
 - Neovim 0.11.3+ for integration testing
 - Pre-commit hooks for code quality
 

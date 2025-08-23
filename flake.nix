@@ -46,44 +46,6 @@
           );
         git_last_modified = toString self.sourceInfo.lastModified or "unknown";
       in {
-        devShells = {
-          default = pkgs.mkShell {
-            nativeBuildInputs = with pkgs; [
-              (fenix.stable.withComponents [
-                "cargo"
-                "clippy"
-                "rust-src"
-                "rustc"
-                "rustfmt"
-                "llvm-tools"
-              ])
-            ];
-            packages = with pkgs; [
-              # Development
-              rust-analyzer-nightly
-              grcov
-              pre-commit
-
-              # Integration tests
-              neovim-unwrapped
-              lua-language-server
-
-              go
-              gopls
-
-              zig
-              zls
-
-              typescript
-              typescript-language-server
-            ];
-            shellHook = ''
-              # Unset SOURCE_DATE_EPOCH to prevent reproducible build timestamps during development.
-              # This allows timestamps to reflect the current time, which is useful for development workflows.
-              unset SOURCE_DATE_EPOCH
-            '';
-          };
-        };
         packages = rec {
           default = nvim-mcp;
           nvim-mcp = let
@@ -113,6 +75,14 @@
                 "--skip=integration_tests"
               ];
             };
+          run-test = pkgs.writeShellApplication {
+            name = "run-test";
+            text = builtins.readFile ./scripts/run-test.sh;
+          };
+          run-cov = pkgs.writeShellApplication {
+            name = "run-cov";
+            text = builtins.readFile ./scripts/run-cov.sh;
+          };
         };
         apps = {
           default = {
@@ -127,38 +97,57 @@
             meta = {
               description = "Run tests";
             };
-            program = lib.getExe (pkgs.writeShellScriptBin "test" ''
-              cargo build --bin nvim-mcp
-              cargo test "$@"
-            '');
+            program = lib.getExe self.packages.${system}.test;
           };
           cov = {
             type = "app";
             meta = {
               description = "Run tests with coverage";
             };
-            program = lib.getExe (pkgs.writeShellScriptBin "test-coverage" ''
-              export RUSTFLAGS="-Cinstrument-coverage"
-              export CARGO_TARGET_DIR="$PWD/target/coverage"
-              export LLVM_PROFILE_FILE="$CARGO_TARGET_DIR/data/nvim-mcp-%p-%m.profraw"
+            program = lib.getExe self.packages.${system}.cov;
+          };
+        };
+        devShells = {
+          default = pkgs.mkShell {
+            nativeBuildInputs = with pkgs; [
+              (fenix.stable.withComponents [
+                "cargo"
+                "clippy"
+                "rust-src"
+                "rustc"
+                "rustfmt"
+                "llvm-tools"
+              ])
+            ];
+            packages = with pkgs;
+              [
+                # Development
+                rust-analyzer-nightly
+                grcov
+                pre-commit
 
-              cargo build --bin nvim-mcp
-              cargo test "$@"
+                # Integration tests
+                neovim-unwrapped
+                lua-language-server
 
-              mkdir -p $CARGO_TARGET_DIR/result/
-              grcov $CARGO_TARGET_DIR/data \
-                --llvm \
-                --branch \
-                --source-dir . \
-                --ignore-not-existing \
-                --ignore '../*' --ignore "/*" \
-                --binary-path $CARGO_TARGET_DIR/debug/ \
-                --output-types html,cobertura,markdown \
-                --output-path $CARGO_TARGET_DIR/result/
-              tail -n 1 $CARGO_TARGET_DIR/result/markdown.md
-              #xmllint --xpath "concat('Coverage: ', 100 * string(//coverage/@line-rate), '%')" \
-              #  $CARGO_TARGET_DIR/result/cobertura.xml
-            '');
+                go
+                gopls
+
+                zig
+                zls
+
+                typescript
+                typescript-language-server
+              ]
+              ++ (with self.packages.${system}; [
+                run-test
+                run-cov
+              ]);
+            shellHook = ''
+              # Unset SOURCE_DATE_EPOCH to prevent reproducible build timestamps during development.
+              # This allows timestamps to reflect the current time, which is useful for development workflows.
+              unset SOURCE_DATE_EPOCH
+            '';
           };
         };
       }
