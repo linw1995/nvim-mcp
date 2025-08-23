@@ -12,7 +12,6 @@ use tracing_test::traced_test;
 
 use crate::test_utils::*;
 
-/// Get the compiled binary path, compiling only once
 fn get_compiled_binary() -> PathBuf {
     let mut binary_path = get_target_dir();
     binary_path.push("debug");
@@ -44,11 +43,7 @@ fn get_target_dir() -> PathBuf {
 /// Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
     () => {{
-        let command = {
-            let binary_path = get_compiled_binary();
-            Command::new(binary_path)
-        };
-
+        let command = Command::new(get_compiled_binary());
         ().serve(TokioChildProcess::new(command)?)
             .await
             .map_err(|e| {
