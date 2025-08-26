@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rmcp::{
     ErrorData as McpError, RoleServer,
     handler::server::{router::tool::ToolRouter, tool::Parameters},
@@ -343,9 +345,28 @@ fn default_true() -> bool {
     true
 }
 
+macro_rules! include_files {
+    ($($key:ident),* $(,)?) => {{
+        let mut map = HashMap::new();
+        $(
+            map.insert(stringify!($key), include_str!(concat!("../../docs/tools/", stringify!($key), ".md")));
+        )*
+        map
+    }};
+}
+
+impl NeovimMcpServer {
+    pub fn tool_descriptions() -> HashMap<&'static str, &'static str> {
+        include_files! {
+            get_targets,
+            connect,
+        }
+    }
+}
+
 #[tool_router]
 impl NeovimMcpServer {
-    #[tool(description = "Get available Neovim targets")]
+    #[tool]
     #[instrument(skip(self))]
     pub async fn get_targets(&self) -> Result<CallToolResult, McpError> {
         let targets = find_get_all_targets();
@@ -359,7 +380,7 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(targets)?]))
     }
 
-    #[tool(description = "Connect to Neovim instance via unix socket(pipe)")]
+    #[tool]
     #[instrument(skip(self))]
     pub async fn connect(
         &self,
@@ -406,12 +427,11 @@ impl NeovimMcpServer {
             serde_json::json!({
                 "connection_id": connection_id,
                 "target": path,
-                "message": format!("Connected to Neovim at {path}")
             }),
         )?]))
     }
 
-    #[tool(description = "Connect to Neovim instance via TCP")]
+    #[tool(description = "Connect via TCP address")]
     #[instrument(skip(self))]
     pub async fn connect_tcp(
         &self,
@@ -458,7 +478,6 @@ impl NeovimMcpServer {
             serde_json::json!({
                 "connection_id": connection_id,
                 "target": address,
-                "message": format!("Connected to Neovim at {address}")
             }),
         )?]))
     }
@@ -498,7 +517,7 @@ impl NeovimMcpServer {
         }
     }
 
-    #[tool(description = "List all open buffers in Neovim")]
+    #[tool(description = "List all open buffers")]
     #[instrument(skip(self))]
     pub async fn list_buffers(
         &self,
@@ -509,7 +528,7 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(buffers)?]))
     }
 
-    #[tool(description = "Execute Lua code in Neovim")]
+    #[tool(description = "Execute Lua code")]
     #[instrument(skip(self))]
     pub async fn exec_lua(
         &self,
@@ -550,7 +569,7 @@ impl NeovimMcpServer {
         )?]))
     }
 
-    #[tool(description = "Get buffer's diagnostics")]
+    #[tool(description = "Get diagnostics for specific buffer")]
     #[instrument(skip(self))]
     pub async fn buffer_diagnostics(
         &self,
@@ -561,7 +580,7 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(diagnostics)?]))
     }
 
-    #[tool(description = "Get workspace's lsp clients")]
+    #[tool(description = "Get workspace LSP clients")]
     #[instrument(skip(self))]
     pub async fn lsp_clients(
         &self,
@@ -781,7 +800,7 @@ impl NeovimMcpServer {
         )?]))
     }
 
-    #[tool(description = "Apply a workspace edit using the LSP workspace/applyEdit method")]
+    #[tool(description = "Apply workspace edits using Neovim's LSP utility functions")]
     #[instrument(skip(self))]
     pub async fn lsp_apply_edit(
         &self,

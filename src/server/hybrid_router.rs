@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -113,6 +113,9 @@ pub struct HybridToolRouter {
     /// Static tools from #[tool_router] macro
     static_router: ToolRouter<NeovimMcpServer>,
 
+    /// Static tools description overwrite (if any)
+    static_tool_descriptions: HashMap<&'static str, &'static str>,
+
     /// Dynamic tools by tool name, then by connection ID (tool_name -> connection_id -> tool)
     dynamic_tools: DynamicToolsStorage,
 
@@ -122,9 +125,13 @@ pub struct HybridToolRouter {
 
 impl HybridToolRouter {
     /// Create a new HybridToolRouter with the given static router
-    pub fn new(static_router: ToolRouter<NeovimMcpServer>) -> Self {
+    pub fn new(
+        static_router: ToolRouter<NeovimMcpServer>,
+        static_tool_descriptions: HashMap<&'static str, &'static str>,
+    ) -> Self {
         Self {
             static_router,
+            static_tool_descriptions,
             dynamic_tools: Arc::new(DashMap::new()),
             connection_tools: Arc::new(DashMap::new()),
         }
@@ -210,8 +217,13 @@ impl HybridToolRouter {
         let mut tools = Vec::new();
 
         // 1. Get static tools from macro-generated router
-        let static_tools = self.static_router.list_all();
-        tools.extend(static_tools);
+        // Overwrite description for static tools if it has more comprehensive description
+        tools.extend(self.static_router.list_all().into_iter().map(|mut tool| {
+            if let Some(desc) = self.static_tool_descriptions.get(tool.name.as_ref()) {
+                tool.description = Some(desc.to_owned().into());
+            }
+            tool
+        }));
 
         // 2. Add dynamic tools with proper metadata
         // For each tool name, we want to show one entry (representing all connections that have this tool)

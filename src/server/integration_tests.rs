@@ -166,7 +166,7 @@ async fn test_connect_nvim_tcp_tool() -> Result<(), Box<dyn std::error::Error>> 
     // Verify the response contains success message
     if let Some(content) = result.content.as_ref().and_then(|c| c.first()) {
         if let Some(text) = content.as_text() {
-            assert!(text.text.contains("Connected to Neovim"));
+            assert!(text.text.contains("connection_id"));
             assert!(text.text.contains(&ipc_path));
         } else {
             panic!("Expected text content in connect result");
