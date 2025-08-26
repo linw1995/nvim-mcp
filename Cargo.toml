@@ -41,7 +41,7 @@ tracing-appender = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 
 # MCP Protocol Implementation
-rmcp = { version = "0.5.0", features = [
+rmcp = { version = "0.6.0", features = [
   "transport-io",
   "transport-child-process",
   "transport-streamable-http-server",
@@ -67,7 +67,7 @@ serde_json = "1.0.141"
 schemars = "1.0"
 
 # JSON Schema Validation
-jsonschema = "0.32"
+jsonschema = "0.33"
 
 # File System Operations
 glob = "0.3"
