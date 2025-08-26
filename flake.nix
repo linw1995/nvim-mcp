@@ -21,16 +21,6 @@
           inherit system;
           overlays = [
             inputs.fenix.overlays.default
-            (final: prev: {
-              neovim-unwrapped = prev.neovim-unwrapped.overrideAttrs (old: {
-                src = prev.fetchFromGitHub {
-                  owner = "neovim";
-                  repo = "neovim";
-                  rev = "v0.11.3"; # b2684d9
-                  hash = "sha256-B/An+SiRWC3Ea0T/sEk8aNBS1Ab9OENx/l4Z3nn8xE4=";
-                };
-              });
-            })
           ];
         };
         lib = pkgs.lib;
