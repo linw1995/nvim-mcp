@@ -34,9 +34,10 @@ impl NeovimMcpServer {
     pub fn new() -> Self {
         debug!("Creating new NeovimMcpServer instance");
         let static_router = crate::server::tools::build_tool_router();
+        let static_tool_descriptions = Self::tool_descriptions();
         Self {
             nvim_clients: Arc::new(DashMap::new()),
-            hybrid_router: HybridToolRouter::new(static_router),
+            hybrid_router: HybridToolRouter::new(static_router, static_tool_descriptions),
         }
     }
 

@@ -385,7 +385,7 @@ mod tests {
         assert!(result.is_ok());
 
         let mcp_result = result.unwrap();
-        assert_eq!(mcp_result.content.as_ref().unwrap().len(), 1);
+        assert_eq!(mcp_result.content.len(), 1);
     }
 
     #[test]
