@@ -788,6 +788,8 @@ pub struct FormattingOptions {
     pub extras: HashMap<String, serde_json::Value>,
 }
 
+impl_fromstr_serde_json!(FormattingOptions);
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Command {
     /// Title of the command, like `save`.

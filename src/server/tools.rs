@@ -318,6 +318,7 @@ pub struct DocumentRangeFormattingParams {
     /// Range end position, character number starts from 0
     pub end_character: u64,
     /// The formatting options
+    #[serde(deserialize_with = "string_or_struct")]
     pub options: FormattingOptions,
     /// Whether to apply the text edits automatically (default: false)
     #[serde(default)]
