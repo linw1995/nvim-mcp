@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
 - **FormattingOptions Deserialization**: Fixed `FormattingOptions` to support both
   string and struct deserialization formats for better compatibility with various
   MCP clients
+- **Dynamic Tools Plugin Dependency** (#62): Added plugin availability check before
+  Lua tool discovery to prevent errors when nvim-mcp plugin is not installed.
+  Server now gracefully handles missing plugin and continues with static tools only
 
 ### New Features
 
