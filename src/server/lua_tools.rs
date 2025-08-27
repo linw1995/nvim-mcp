@@ -178,12 +178,36 @@ impl LuaToolValidator {
     }
 }
 
+// Helper function to check if nvim-mcp plugin is available
+#[instrument(skip(client))]
+async fn check_plugin_availability(client: &dyn NeovimClientTrait) -> Result<bool, NeovimError> {
+    let lua_code = r#"
+        local success, _ = pcall(require, 'nvim-mcp')
+        return success
+    "#;
+
+    let result = client.execute_lua(lua_code).await?;
+
+    match result {
+        rmpv::Value::Boolean(available) => Ok(available),
+        _ => Ok(false), // Default to false if we get unexpected response
+    }
+}
+
 // CORE FUNCTION: Discover tools from Neovim instance
 #[instrument(skip(client))]
 pub async fn discover_lua_tools(
     client: &dyn NeovimClientTrait,
 ) -> Result<HashMap<String, LuaToolConfig>, NeovimError> {
     debug!("Discovering Lua tools from Neovim instance");
+
+    // Check if nvim-mcp plugin is available before attempting discovery
+    let plugin_available = check_plugin_availability(client).await?;
+
+    if !plugin_available {
+        debug!("nvim-mcp Lua plugin is not installed, skipping dynamic tool discovery");
+        return Ok(HashMap::new());
+    }
 
     let lua_code = r#"
         local nvim_mcp = require('nvim-mcp')
