@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **FormattingOptions Deserialization**: Fixed `FormattingOptions` to support both
+  string and struct deserialization formats for better compatibility with various
+  MCP clients
+
 ### New Features
 
 - **LSP Readiness Tool**: Added `wait_for_lsp_ready` tool for ensuring LSP client
