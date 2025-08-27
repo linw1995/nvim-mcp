@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rmcp::{
     ErrorData as McpError, RoleServer,
-    handler::server::{router::tool::ToolRouter, tool::Parameters},
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars,
     service::RequestContext,
