@@ -220,7 +220,7 @@ impl HybridToolRouter {
         // Overwrite description for static tools if it has more comprehensive description
         tools.extend(self.static_router.list_all().into_iter().map(|mut tool| {
             if let Some(desc) = self.static_tool_descriptions.get(tool.name.as_ref()) {
-                tool.description = Some(desc.to_owned().into());
+                tool.description = Some(desc.to_owned().trim().into());
             }
             tool
         }));
