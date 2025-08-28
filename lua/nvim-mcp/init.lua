@@ -111,11 +111,17 @@ function M.get_registered_tools()
     for tool_name, tool_config in pairs(M._tool_registry) do
         tools[tool_name] = {
             name = tool_name,
-            description = tool_config.description,
-            input_schema = tool_config.parameters,
+            description = tool_config.description or "",
+            input_schema = tool_config.parameters or {
+                type = "object",
+            },
         }
     end
-    return tools
+    if #tools == 0 then
+        return nil
+    else
+        return tools
+    end
 end
 
 -- Tool Execution API with error handling
