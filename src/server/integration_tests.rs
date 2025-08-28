@@ -4,7 +4,7 @@ use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
     serde_json::{Map, Value},
     service::ServiceExt,
-    transport::TokioChildProcess,
+    transport::{ConfigureCommandExt, TokioChildProcess},
 };
 use tokio::process::Command;
 use tracing::{error, info};
@@ -43,7 +43,10 @@ fn get_target_dir() -> PathBuf {
 /// Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
     () => {{
-        let command = Command::new(get_compiled_binary());
+        let command = Command::new(get_compiled_binary()).configure(|cmd| {
+            // cmd.args(["--log-file", "."]);
+            cmd.args(["--connect", "manual"]);
+        });
         ().serve(TokioChildProcess::new(command)?)
             .await
             .map_err(|e| {
