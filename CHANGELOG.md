@@ -18,6 +18,13 @@ All notable changes to this project will be documented in this file.
 - **Dynamic Tools Plugin Dependency** (#62): Added plugin availability check before
   Lua tool discovery to prevent errors when nvim-mcp plugin is not installed.
   Server now gracefully handles missing plugin and continues with static tools only
+- **Lua Tool Discovery for Empty Registries**: Fixed handling of cases where no
+  Lua tools are registered by returning null/empty map instead of failing. Added
+  fallback values for missing tool descriptions and input schemas to prevent
+  errors during tool registration
+- **Test Environment Isolation**: Added `-i NONE` flag to Neovim test instances
+  to disable shada file loading, ensuring consistent test behavior across different
+  environments and preventing interference from user's vim history and settings
 
 ### New Features
 
