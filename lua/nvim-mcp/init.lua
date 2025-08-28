@@ -117,7 +117,7 @@ function M.get_registered_tools()
             },
         }
     end
-    if #tools == 0 then
+    if next(tools) == nil then
         return nil
     else
         return tools

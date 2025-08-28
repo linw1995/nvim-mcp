@@ -4,7 +4,7 @@ use rmcp::{
     ErrorData as McpError,
     model::{CallToolResult, Content},
 };
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use super::core::NeovimMcpServer;
 use super::hybrid_router::DynamicTool;
@@ -205,7 +205,7 @@ pub async fn discover_lua_tools(
     let plugin_available = check_plugin_availability(client).await?;
 
     if !plugin_available {
-        debug!("nvim-mcp Lua plugin is not installed, skipping dynamic tool discovery");
+        warn!("nvim-mcp Lua plugin is not installed, skipping dynamic tool discovery");
         return Ok(HashMap::new());
     }
 
@@ -224,7 +224,7 @@ pub async fn discover_lua_tools(
         .map_err(|e| NeovimError::Api(format!("Failed to parse tool configs: {}", e)))?;
 
     if let Some(mut tools) = temp_tools {
-        debug!("Discovered {} Lua tools", tools.len());
+        info!("Discovered {} Lua tools", tools.len());
         for tool in tools.values_mut() {
             if let Err(e) = tool.init() {
                 let tool_name = tool.name();
@@ -237,7 +237,7 @@ pub async fn discover_lua_tools(
         }
         Ok(tools)
     } else {
-        debug!("No Lua tools discovered");
+        info!("No Lua tools discovered");
         return Ok(HashMap::new());
     }
 }
