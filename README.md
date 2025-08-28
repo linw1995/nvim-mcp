@@ -15,6 +15,8 @@ scenarios.
 - **Buffer Operations**: List and inspect all open buffers with detailed information
 - **Diagnostics Access**: Retrieve diagnostics for buffers with error/warning details
 - **LSP Integration**: Access code actions and LSP client information
+- **Cursor Positioning**: Get current cursor position with buffer name and
+  zero-based coordinates
 - **MCP Resources**: Structured diagnostic data via connection-aware URI schemes
 - **Lua Execution**: Execute arbitrary Lua code directly in Neovim
 - **Plugin Integration**: Automatic setup through Neovim plugin
