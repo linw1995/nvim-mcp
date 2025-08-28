@@ -171,7 +171,16 @@ pub async fn setup_neovim_instance_advance(
     let listen = format!("{HOST}:{port}");
 
     let mut child = StdCommand::new(nvim_path())
-        .args(["-n", "-u", cfg_path, "--headless", "--listen", &listen])
+        .args([
+            "-n",
+            "-i",
+            "NONE",
+            "-u",
+            cfg_path,
+            "--headless",
+            "--listen",
+            &listen,
+        ])
         .args(
             (!open_file.is_empty())
                 .then_some(vec![open_file])
@@ -212,7 +221,16 @@ pub async fn setup_neovim_instance_socket_advance(
     open_file: &str,
 ) -> std::process::Child {
     let mut child = StdCommand::new(nvim_path())
-        .args(["-n", "-u", cfg_path, "--headless", "--listen", socket_path])
+        .args([
+            "-n",
+            "-i",
+            "NONE",
+            "-u",
+            cfg_path,
+            "--headless",
+            "--listen",
+            socket_path,
+        ])
         .args(
             (!open_file.is_empty())
                 .then_some(vec![open_file])
@@ -254,7 +272,16 @@ pub async fn setup_neovim_instance_pipe_advance(
     open_file: &str,
 ) -> std::process::Child {
     let mut child = StdCommand::new(nvim_path())
-        .args(&["-u", cfg_path, "--headless", "--listen", pipe_path])
+        .args(&[
+            "-n",
+            "-i",
+            "NONE",
+            "-u",
+            cfg_path,
+            "--headless",
+            "--listen",
+            pipe_path,
+        ])
         .args(
             (!open_file.is_empty())
                 .then_some(vec![open_file])
@@ -325,7 +352,16 @@ pub async fn setup_test_neovim_instance(
     ipc_path: &str,
 ) -> Result<NeovimIpcGuard, Box<dyn std::error::Error>> {
     let mut child = StdCommand::new(nvim_path())
-        .args(["-u", "NONE", "--headless", "--listen", ipc_path])
+        .args([
+            "-n",
+            "-i",
+            "NONE",
+            "-u",
+            "NONE",
+            "--headless",
+            "--listen",
+            ipc_path,
+        ])
         .spawn()
         .map_err(|e| {
             format!("Failed to start Neovim - ensure nvim is installed and in PATH: {e}")
