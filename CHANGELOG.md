@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
 
 ### New Features
 
+- **Cursor Position Tool**: Added `cursor_position` tool to get current cursor
+  position with buffer name and zero-based row/col coordinates
 - **LSP Readiness Tool**: Added `wait_for_lsp_ready` tool for ensuring LSP client
   readiness before performing operations, improving reliability of LSP workflows
 

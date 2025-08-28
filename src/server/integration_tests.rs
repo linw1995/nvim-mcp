@@ -1251,3 +1251,102 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
 
     Ok(())
 }
+
+#[tokio::test]
+#[traced_test]
+async fn test_cursor_position_tool() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting MCP client to test cursor_position tool");
+
+    let service = create_mcp_service!();
+
+    // Test cursor_position without connection (should fail)
+    let mut invalid_args = Map::new();
+    invalid_args.insert(
+        "connection_id".to_string(),
+        Value::String("invalid_connection_id".to_string()),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "cursor_position".into(),
+            arguments: Some(invalid_args),
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "cursor_position should fail with invalid connection ID"
+    );
+
+    // Now connect first, then test cursor_position
+    let ipc_path = generate_random_ipc_path();
+    let _guard = setup_test_neovim_instance(&ipc_path).await?;
+
+    // Connect first
+    let mut connect_args = Map::new();
+    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
+
+    let connect_result = service
+        .call_tool(CallToolRequestParam {
+            name: "connect".into(),
+            arguments: Some(connect_args),
+        })
+        .await?;
+
+    let connection_id = extract_connection_id(&connect_result)?;
+
+    // Test successful cursor_position call
+    let mut cursor_args = Map::new();
+    cursor_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "cursor_position".into(),
+            arguments: Some(cursor_args),
+        })
+        .await?;
+
+    info!("Cursor position result: {:#?}", result);
+    assert!(!result.content.is_empty());
+
+    // Verify the response contains cursor position data
+    if let Some(content) = result.content.first() {
+        if let Some(text) = content.as_text() {
+            // Parse JSON response
+            let cursor_data: serde_json::Value = serde_json::from_str(&text.text)?;
+
+            // Verify required fields are present
+            assert!(
+                cursor_data["bufname"].is_string(),
+                "Should have bufname field"
+            );
+            assert!(cursor_data["row"].is_number(), "Should have row field");
+            assert!(cursor_data["col"].is_number(), "Should have col field");
+
+            // Verify coordinates are zero-based (should be 0,0 for new buffer)
+            let row = cursor_data["row"].as_i64().expect("row should be a number");
+            let col = cursor_data["col"].as_i64().expect("col should be a number");
+
+            assert!(row >= 0, "Row should be zero-based (>= 0)");
+            assert!(col >= 0, "Col should be zero-based (>= 0)");
+
+            info!(
+                "Cursor position: bufname={}, row={}, col={}",
+                cursor_data["bufname"], row, col
+            );
+        } else {
+            panic!("Expected text content in cursor_position result");
+        }
+    } else {
+        panic!("No content in cursor_position result");
+    }
+
+    // Cleanup happens automatically via guard
+    service.cancel().await?;
+    info!("Cursor position tool test completed successfully");
+
+    Ok(())
+}

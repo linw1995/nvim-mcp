@@ -242,7 +242,9 @@ pub async fn discover_lua_tools(
 }
 
 // Helper function to convert nvim_rs::Value to serde_json::Value
-fn convert_nvim_value_to_json(nvim_value: rmpv::Value) -> Result<serde_json::Value, NeovimError> {
+pub fn convert_nvim_value_to_json(
+    nvim_value: rmpv::Value,
+) -> Result<serde_json::Value, NeovimError> {
     match nvim_value {
         rmpv::Value::Nil => Ok(serde_json::Value::Null),
         rmpv::Value::Boolean(b) => Ok(serde_json::Value::Bool(b)),

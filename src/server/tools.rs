@@ -1026,6 +1026,29 @@ impl NeovimMcpServer {
             ))
         }
     }
+
+    #[tool(
+        description = "Get the current cursor position: buffer name, and zero-based row/col index"
+    )]
+    #[instrument(skip(self))]
+    pub async fn cursor_position(
+        &self,
+        Parameters(ConnectionRequest { connection_id }): Parameters<ConnectionRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let lua_code = include_str!("./lua/cursor_position.lua");
+        let result = client.execute_lua(lua_code).await?;
+
+        // Convert nvim Value to serde_json::Value for serialization
+        let json_result = lua_tools::convert_nvim_value_to_json(result).map_err(|e| {
+            McpError::internal_error(
+                format!("Failed to convert cursor position result to JSON: {}", e),
+                None,
+            )
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::json(json_result)?]))
+    }
 }
 
 /// Build tool router for NeovimMcpServer
