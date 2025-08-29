@@ -123,6 +123,16 @@ established automatically:
 5. Navigate to symbol locations using returned position information
 6. Keep connection active for continued navigation
 
+#### Navigation Workflow
+
+1. Connect to Neovim instance (cache connection_id)
+2. Use navigate tool to go to a specific position in current buffer or open a file
+3. Specify target document using DocumentIdentifier (buffer_id,
+   project_relative_path, or absolute_path)
+4. Provide zero-based line and character coordinates for precise positioning
+5. Receive navigation result with success status, buffer name, and current line content
+6. Keep connection active for continued navigation operations
+
 #### Cursor Position Workflow
 
 1. Connect to Neovim instance (cache connection_id)

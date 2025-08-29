@@ -221,7 +221,7 @@ and resources - only the transport layer changes.
 
 ## Available Tools
 
-The server provides 24 MCP tools for interacting with Neovim:
+The server provides 26 MCP tools for interacting with Neovim:
 
 ### Connection Management
 
@@ -244,6 +244,15 @@ The server provides 24 MCP tools for interacting with Neovim:
 
 All tools below require a `connection_id` parameter from the connection
 establishment phase:
+
+#### Navigation and Positioning
+
+- **`navigate`**: Navigate to a specific position in the current buffer or open
+  a file at a specific position
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `line` (number), `character` (number) (all positions are 0-indexed)
+  - Returns: Navigation result with success status, buffer name, and current
+    line content
 
 #### Buffer Operations
 
