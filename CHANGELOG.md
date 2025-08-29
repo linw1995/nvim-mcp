@@ -28,6 +28,9 @@ All notable changes to this project will be documented in this file.
 
 ### New Features
 
+- **Navigation Tool**: Added `navigate` tool to navigate to a specific position
+  in the current buffer or open a file at a specific position with universal
+  document identification support
 - **Cursor Position Tool**: Added `cursor_position` tool to get current cursor
   position with buffer name and zero-based row/col coordinates
 - **LSP Readiness Tool**: Added `wait_for_lsp_ready` tool for ensuring LSP client

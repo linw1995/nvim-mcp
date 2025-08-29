@@ -346,6 +346,22 @@ fn default_true() -> bool {
     true
 }
 
+/// Navigate to a specific position in the current buffer or open a file at a specific position
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct NavigateParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Document to navigate to
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Symbol position, line number starts from 0
+    pub line: u64,
+    /// Symbol position, character number starts from 0
+    pub character: u64,
+}
+
 macro_rules! include_files {
     ($($key:ident),* $(,)?) => {{
         let mut map = HashMap::new();
@@ -427,7 +443,6 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "connection_id": connection_id,
-                "target": path,
             }),
         )?]))
     }
@@ -478,7 +493,6 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "connection_id": connection_id,
-                "target": address,
             }),
         )?]))
     }
@@ -1048,6 +1062,25 @@ impl NeovimMcpServer {
         })?;
 
         Ok(CallToolResult::success(vec![Content::json(json_result)?]))
+    }
+
+    #[tool(
+        description = "Navigate to a specific position in the current buffer or open a file at a specific position"
+    )]
+    #[instrument(skip(self))]
+    pub async fn navigate(
+        &self,
+        Parameters(NavigateParams {
+            connection_id,
+            document,
+            line,
+            character,
+        }): Parameters<NavigateParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let position = Position { line, character };
+        let result = client.navigate(document, position).await?;
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 }
 
