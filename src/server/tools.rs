@@ -427,7 +427,6 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "connection_id": connection_id,
-                "target": path,
             }),
         )?]))
     }
@@ -478,7 +477,6 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "connection_id": connection_id,
-                "target": address,
             }),
         )?]))
     }
