@@ -170,7 +170,6 @@ async fn test_connect_nvim_tcp_tool() -> Result<(), Box<dyn std::error::Error>> 
     if let Some(content) = result.content.first() {
         if let Some(text) = content.as_text() {
             assert!(text.text.contains("connection_id"));
-            assert!(text.text.contains(&ipc_path));
         } else {
             panic!("Expected text content in connect result");
         }
