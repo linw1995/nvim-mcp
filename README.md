@@ -48,6 +48,20 @@ git clone https://github.com/linw1995/nvim-mcp.git && cd nvim-mcp
 cargo install --path .
 ```
 
+## Demo
+
+<!-- markdownlint-configure-file
+{
+  "no-bare-urls": false
+}
+-->
+
+See how the nvim-mcp server helps fix workspace diagnostics
+in real-time using AI assistance and LSP integration.
+(From https://github.com/linw1995/nvim-mcp/discussions/10)
+
+https://github.com/user-attachments/assets/b0fdf78c-c80b-433f-9b7f-0d123d9a6a7e
+
 ## Quick Start
 
 ### 1. Start the Server
