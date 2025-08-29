@@ -61,17 +61,20 @@ With a plugin manager like `lazy.nvim`:
 ```lua
 return {
     "linw1995/nvim-mcp",
-    build = "cargo install --path .", -- or use nix build
+    build = "cargo install --path .",
     opts = {},
 }
 ```
 
-### 2. Start the Server
+### 2. Configure `claude` or other MCP clients
 
 ```bash
 # Auto-connect to current project Neovim instances (recommended)
 claude mcp add -s local nvim -- nvim-mcp --log-file . \
   --log-level debug --connect auto
+
+# Analyze diagnostics in current Neovim instance
+claude "analyze @nvim:nvim-diagnostics://"
 ```
 
 ## Documentation
