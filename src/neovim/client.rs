@@ -220,7 +220,7 @@ pub struct Notification {
 }
 
 /// Shared state for notification tracking
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct NotificationTracker {
     notifications: Arc<Mutex<Vec<Notification>>>,
     notify_wakers: Arc<Mutex<HashMap<String, Vec<tokio::sync::oneshot::Sender<Notification>>>>>,
@@ -231,13 +231,6 @@ const MAX_STORED_NOTIFICATIONS: usize = 100;
 const NOTIFICATION_EXPIRY_SECONDS: u64 = 30;
 
 impl NotificationTracker {
-    pub fn new() -> Self {
-        Self {
-            notifications: Arc::new(Mutex::new(Vec::new())),
-            notify_wakers: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
     /// Clean up expired and excess notifications
     async fn cleanup_notifications(&self) {
         let mut notifications = self.notifications.lock().await;
@@ -372,7 +365,7 @@ impl<T> NeovimHandler<T> {
     pub fn new() -> Self {
         NeovimHandler {
             _marker: std::marker::PhantomData,
-            notification_tracker: NotificationTracker::new(),
+            notification_tracker: NotificationTracker::default(),
         }
     }
 
@@ -1263,6 +1256,19 @@ where
     config: NeovimClientConfig,
 }
 
+impl<T> Default for NeovimClient<T>
+where
+    T: AsyncWrite + Send + 'static,
+{
+    fn default() -> Self {
+        Self {
+            connection: None,
+            notification_tracker: None,
+            config: NeovimClientConfig::default(),
+        }
+    }
+}
+
 #[cfg(unix)]
 type Connection = tokio::net::UnixStream;
 #[cfg(windows)]
@@ -1390,14 +1396,6 @@ impl<T> NeovimClient<T>
 where
     T: AsyncWrite + Send + 'static,
 {
-    pub fn new() -> Self {
-        Self {
-            connection: None,
-            notification_tracker: None,
-            config: NeovimClientConfig::default(),
-        }
-    }
-
     /// Configure the Neovim client with custom settings
     #[allow(dead_code)]
     pub fn with_config(mut self, config: NeovimClientConfig) -> Self {
@@ -3306,7 +3304,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_notification_tracker_basic() {
-        let tracker = NotificationTracker::new();
+        let tracker = NotificationTracker::default();
 
         // Test recording a notification
         tracker
@@ -3330,7 +3328,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_notification_tracker_timeout() {
-        let tracker = NotificationTracker::new();
+        let tracker = NotificationTracker::default();
 
         // Test waiting for a notification that never comes (should timeout)
         let result = tracker
@@ -3349,7 +3347,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_notification_tracker_wait_then_send() {
-        let tracker = NotificationTracker::new();
+        let tracker = NotificationTracker::default();
 
         // Spawn a task that will wait for a notification
         let wait_handle = tokio::spawn({
@@ -3383,7 +3381,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_notification_cleanup_expired() {
-        let tracker = NotificationTracker::new();
+        let tracker = NotificationTracker::default();
 
         // Record a notification with a modified timestamp (simulate old notification)
         let old_notification = Notification {
@@ -3433,7 +3431,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_notification_cleanup_excess() {
-        let tracker = NotificationTracker::new();
+        let tracker = NotificationTracker::default();
 
         // Record more than MAX_STORED_NOTIFICATIONS
         for i in 0..(MAX_STORED_NOTIFICATIONS + 10) {
@@ -3460,7 +3458,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_notification_expiry_in_wait() {
-        let tracker = NotificationTracker::new();
+        let tracker = NotificationTracker::default();
 
         // Create an expired notification manually
         let expired_notification = Notification {

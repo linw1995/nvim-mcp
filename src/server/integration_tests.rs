@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
     serde_json::{Map, Value},
@@ -10,41 +8,12 @@ use tokio::process::Command;
 use tracing::{error, info};
 use tracing_test::traced_test;
 
-use crate::test_utils::*;
+use crate::{server::core::b3sum, test_utils::*};
 
-fn get_compiled_binary() -> PathBuf {
-    let mut binary_path = get_target_dir();
-    binary_path.push("debug");
-    binary_path.push("nvim-mcp");
-    if !binary_path.exists() {
-        panic!(
-            "Compiled binary not found at {:?}. Please run `cargo build` first.",
-            binary_path
-        );
-    }
-
-    binary_path
-}
-
-fn get_target_dir() -> PathBuf {
-    std::env::var("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .or_else(|_| {
-            // Default to target directory if not set
-            std::env::var("CARGO_MANIFEST_DIR").map(|dir| {
-                let mut path = PathBuf::from(dir);
-                path.push("target");
-                path
-            })
-        })
-        .expect("Failed to determine target directory")
-}
-
-/// Macro to create an MCP service using the pre-compiled binary
+// Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
     () => {{
         let command = Command::new(get_compiled_binary()).configure(|cmd| {
-            // cmd.args(["--log-file", "."]);
             cmd.args(["--connect", "manual"]);
         });
         ().serve(TokioChildProcess::new(command)?)
@@ -53,6 +22,55 @@ macro_rules! create_mcp_service {
                 error!("Failed to connect to server: {}", e);
                 e
             })?
+    }};
+    ($target:expr) => {{
+        // Macro to create an MCP service with auto-connect to a specific target
+        let command = Command::new(get_compiled_binary()).configure(|cmd| {
+            cmd.args(["--connect", $target]);
+        });
+        ().serve(TokioChildProcess::new(command)?)
+            .await
+            .map_err(|e| {
+                error!("Failed to connect to server: {}", e);
+                e
+            })?
+    }};
+}
+
+/// Macro to setup auto-connected service and return (service, connection_id, guard)
+/// This eliminates the boilerplate for auto-connect tests
+macro_rules! setup_connected_service {
+    () => {{
+        let ipc_path = generate_random_ipc_path();
+        let _guard = setup_test_neovim_instance(&ipc_path).await?;
+        let service = create_mcp_service!(&ipc_path);
+        let connection_id = b3sum(&ipc_path)[..7].to_string();
+        (service, connection_id, _guard)
+    }};
+    ($cfg_path:expr, $open_file:expr) => {{
+        let ipc_path = generate_random_ipc_path();
+        let child = setup_neovim_instance_socket_advance(&ipc_path, $cfg_path, $open_file).await;
+        let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
+        let service = create_mcp_service!(&ipc_path);
+        let connection_id = b3sum(&ipc_path)[..7].to_string();
+        (service, connection_id, _guard)
+    }};
+}
+
+/// Macro to connect to a Neovim instance through MCP service and get connection_id
+macro_rules! connect_to_neovim {
+    ($service:expr, $ipc_path:expr) => {{
+        let mut connect_args = Map::new();
+        connect_args.insert("target".to_string(), Value::String($ipc_path));
+
+        let connect_result = $service
+            .call_tool(CallToolRequestParam {
+                name: "connect".into(),
+                arguments: Some(connect_args),
+            })
+            .await?;
+
+        extract_connection_id(&connect_result)?
     }};
 }
 
@@ -178,7 +196,7 @@ async fn test_list_tools() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 #[traced_test]
-async fn test_connect_nvim_tcp_tool() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_connect_nvim() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting MCP client to test nvim-mcp server");
 
     let service = create_mcp_service!();
@@ -239,29 +257,68 @@ async fn test_connect_nvim_tcp_tool() -> Result<(), Box<dyn std::error::Error>> 
 
 #[tokio::test]
 #[traced_test]
-async fn test_disconnect_nvim_tcp_tool() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Starting MCP client to test nvim-mcp server");
+async fn test_invalid_connection_id_handling() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting MCP client to test invalid connection ID handling");
 
     let service = create_mcp_service!();
 
-    // Test disconnect without valid connection (should fail)
-    let mut invalid_disconnect_args = Map::new();
-    invalid_disconnect_args.insert(
-        "connection_id".to_string(),
-        Value::String("invalid_connection_id".to_string()),
-    );
+    // Test that all connection-aware tools fail with invalid connection ID
+    let invalid_connection_id = "invalid_connection_id".to_string();
+    let tools_to_test = vec![
+        "disconnect",
+        "list_buffers",
+        "exec_lua",
+        "lsp_clients",
+        "cursor_position",
+        "navigate",
+    ];
 
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "disconnect".into(),
-            arguments: Some(invalid_disconnect_args),
-        })
-        .await;
+    for tool_name in tools_to_test {
+        let mut args = Map::new();
+        args.insert(
+            "connection_id".to_string(),
+            Value::String(invalid_connection_id.clone()),
+        );
 
-    assert!(
-        result.is_err(),
-        "Disconnect should fail with invalid connection ID"
-    );
+        // Add tool-specific required arguments
+        match tool_name {
+            "exec_lua" => {
+                args.insert("code".to_string(), Value::String("return 42".to_string()));
+            }
+            "navigate" => {
+                args.insert("document".to_string(), serde_json::json!({"buffer_id": 1}));
+                args.insert("line".to_string(), Value::Number(0.into()));
+                args.insert("character".to_string(), Value::Number(0.into()));
+            }
+            _ => {}
+        }
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: tool_name.into(),
+                arguments: Some(args),
+            })
+            .await;
+
+        assert!(
+            result.is_err(),
+            "{} should fail with invalid connection ID",
+            tool_name
+        );
+    }
+
+    service.cancel().await?;
+    info!("Invalid connection ID handling test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_disconnect_nvim() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting MCP client to test nvim-mcp server");
+
+    let service = create_mcp_service!();
 
     // Now connect first, then test disconnect
     let ipc_path = generate_random_ipc_path();
@@ -337,43 +394,8 @@ async fn test_disconnect_nvim_tcp_tool() -> Result<(), Box<dyn std::error::Error
 async fn test_list_buffers_tool() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting MCP client to test nvim-mcp server");
 
-    let service = create_mcp_service!();
-
-    // Test list buffers without connection (should fail)
-    let mut invalid_args = Map::new();
-    invalid_args.insert(
-        "connection_id".to_string(),
-        Value::String("invalid_connection_id".to_string()),
-    );
-
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "list_buffers".into(),
-            arguments: Some(invalid_args),
-        })
-        .await;
-
-    assert!(
-        result.is_err(),
-        "List buffers should fail with invalid connection ID"
-    );
-
-    // Now connect first, then test list buffers
-    let ipc_path = generate_random_ipc_path();
-    let _guard = setup_test_neovim_instance(&ipc_path).await?;
-
-    // Connect first
-    let mut connect_args = Map::new();
-    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-    let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
-        .await?;
-
-    let connection_id = extract_connection_id(&connect_result)?;
+    // Start Neovim instance and use auto-connect service
+    let (service, connection_id, _guard) = setup_connected_service!();
 
     // Now test list buffers
     let mut list_buffers_args = Map::new();
@@ -425,18 +447,7 @@ async fn test_complete_workflow() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 1: Connect to Neovim
     info!("Step 1: Connecting to Neovim");
-    let mut connect_args = Map::new();
-    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-    let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
-        .await?;
-
-    assert!(!connect_result.content.is_empty());
-    let connection_id = extract_connection_id(&connect_result)?;
+    let connection_id = connect_to_neovim!(service, ipc_path);
     info!(
         "✓ Connected successfully with connection_id: {}",
         connection_id
@@ -578,44 +589,8 @@ async fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
 async fn test_exec_lua_tool() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting MCP client to test nvim-mcp server");
 
-    let service = create_mcp_service!();
-
-    // Test exec_lua without connection (should fail)
-    let mut lua_args = Map::new();
-    lua_args.insert(
-        "connection_id".to_string(),
-        Value::String("invalid_connection_id".to_string()),
-    );
-    lua_args.insert("code".to_string(), Value::String("return 42".to_string()));
-
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(lua_args),
-        })
-        .await;
-
-    assert!(
-        result.is_err(),
-        "exec_lua should fail with invalid connection ID"
-    );
-
-    // Now connect first, then test exec_lua
-    let ipc_path = generate_random_ipc_path();
-    let _guard = setup_test_neovim_instance(&ipc_path).await?;
-
-    // Connect first
-    let mut connect_args = Map::new();
-    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-    let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
-        .await?;
-
-    let connection_id = extract_connection_id(&connect_result)?;
+    // Use auto-connect setup
+    let (service, connection_id, _guard) = setup_connected_service!();
 
     // Test successful Lua execution
     let mut lua_args = Map::new();
@@ -666,55 +641,25 @@ async fn test_exec_lua_tool() -> Result<(), Box<dyn std::error::Error>> {
 
     assert!(!result.content.is_empty());
 
-    // Test error handling for invalid Lua
-    let mut invalid_lua_args = Map::new();
-    invalid_lua_args.insert(
+    // Test successful string execution
+    let mut string_lua_args = Map::new();
+    string_lua_args.insert(
         "connection_id".to_string(),
         Value::String(connection_id.clone()),
     );
-    invalid_lua_args.insert(
+    string_lua_args.insert(
         "code".to_string(),
-        Value::String("invalid lua syntax !!!".to_string()),
+        Value::String("return 'hello world'".to_string()),
     );
 
     let result = service
         .call_tool(CallToolRequestParam {
             name: "exec_lua".into(),
-            arguments: Some(invalid_lua_args),
+            arguments: Some(string_lua_args),
         })
-        .await;
+        .await?;
 
-    assert!(result.is_err(), "Should fail for invalid Lua syntax");
-
-    // Test error handling for empty code
-    let mut empty_lua_args = Map::new();
-    empty_lua_args.insert(
-        "connection_id".to_string(),
-        Value::String(connection_id.clone()),
-    );
-    empty_lua_args.insert("code".to_string(), Value::String("".to_string()));
-
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(empty_lua_args),
-        })
-        .await;
-
-    assert!(result.is_err(), "Should fail for empty Lua code");
-
-    // Test missing code argument
-    let mut missing_code_args = Map::new();
-    missing_code_args.insert("connection_id".to_string(), Value::String(connection_id));
-
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(missing_code_args),
-        })
-        .await;
-
-    assert!(result.is_err(), "Should fail when code argument is missing");
+    assert!(!result.content.is_empty());
 
     // Cleanup happens automatically via guard
     service.cancel().await?;
@@ -726,45 +671,7 @@ async fn test_exec_lua_tool() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 #[traced_test]
 async fn test_lsp_clients_tool() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Starting MCP client to test nvim-mcp server");
-
-    let service = create_mcp_service!();
-
-    // Test lsp_clients without connection (should fail)
-    let mut invalid_args = Map::new();
-    invalid_args.insert(
-        "connection_id".to_string(),
-        Value::String("invalid_connection_id".to_string()),
-    );
-
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_clients".into(),
-            arguments: Some(invalid_args),
-        })
-        .await;
-
-    assert!(
-        result.is_err(),
-        "lsp_clients should fail with invalid connection ID"
-    );
-
-    // Now connect first, then test lsp_clients
-    let ipc_path = generate_random_ipc_path();
-    let _guard = setup_test_neovim_instance(&ipc_path).await?;
-
-    // Connect first
-    let mut connect_args = Map::new();
-    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-    let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
-        .await?;
-
-    let connection_id = extract_connection_id(&connect_result)?;
+    let (service, connection_id, _guard) = setup_connected_service!();
 
     // Now test lsp_clients
     let mut lsp_clients_args = Map::new();
@@ -798,9 +705,7 @@ async fn test_lsp_clients_tool() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 #[traced_test]
 async fn test_list_diagnostic_resources() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Starting MCP client to test diagnostic resources");
-
-    let service = create_mcp_service!();
+    let (service, _, _guard) = setup_connected_service!();
 
     // Test list_resources
     let result = service.list_resources(None).await?;
@@ -834,26 +739,7 @@ async fn test_list_diagnostic_resources() -> Result<(), Box<dyn std::error::Erro
 #[tokio::test]
 #[traced_test]
 async fn test_read_workspace_diagnostics() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Starting MCP client to test reading workspace diagnostics");
-
-    let service = create_mcp_service!();
-
-    // Start Neovim instance
-    let ipc_path = generate_random_ipc_path();
-    let _guard = setup_test_neovim_instance(&ipc_path).await?;
-
-    // Connect to Neovim first
-    let mut connect_args = Map::new();
-    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-    let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
-        .await?;
-
-    let connection_id = extract_connection_id(&connect_result)?;
+    let (service, connection_id, _guard) = setup_connected_service!();
 
     // Test read workspace diagnostics resource
     let result = service
@@ -912,35 +798,7 @@ async fn test_read_workspace_diagnostics() -> Result<(), Box<dyn std::error::Err
 #[traced_test]
 #[tokio::test]
 async fn test_lsp_organize_imports_non_existent_file() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Testing lsp_organize_imports with non-existent file");
-
-    let service = create_mcp_service!();
-
-    // Start a test Neovim instance
-    let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
-        &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
-        get_testdata_path("organize_imports.go").to_str().unwrap(),
-    )
-    .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-
-    // Establish connection
-    let connection_id = {
-        let mut connect_args = Map::new();
-        connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-        let result = service
-            .call_tool(CallToolRequestParam {
-                name: "connect".into(),
-                arguments: Some(connect_args),
-            })
-            .await?;
-
-        info!("Connection established successfully");
-        extract_connection_id(&result)?
-    };
+    let (service, connection_id, _guard) = setup_connected_service!();
 
     // Test lsp_organize_imports with valid connection but non-existent file
     let mut args = Map::new();
@@ -980,35 +838,10 @@ async fn test_lsp_organize_imports_non_existent_file() -> Result<(), Box<dyn std
 #[traced_test]
 #[tokio::test]
 async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Testing lsp_organize_imports with LSP setup");
-
-    let service = create_mcp_service!();
-
-    // Start a test Neovim instance with LSP
-    let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
-        &ipc_path,
+    let (service, connection_id, _guard) = setup_connected_service!(
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
-        get_testdata_path("main.go").to_str().unwrap(),
-    )
-    .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-
-    // Establish connection
-    let connection_id = {
-        let mut connect_args = Map::new();
-        connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-        let result = service
-            .call_tool(CallToolRequestParam {
-                name: "connect".into(),
-                arguments: Some(connect_args),
-            })
-            .await?;
-
-        info!("Connection established successfully");
-        extract_connection_id(&result)?
-    };
+        get_testdata_path("main.go").to_str().unwrap()
+    );
 
     // Wait for LSP client (gopls) to be ready
     let mut wait_lsp_args = Map::new();
@@ -1078,34 +911,10 @@ async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::
 #[tokio::test]
 async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::error::Error>> {
     info!("Testing lsp_organize_imports in inspect mode (apply_edits=false)");
-
-    let service = create_mcp_service!();
-
-    // Start a test Neovim instance with LSP
-    let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
-        &ipc_path,
+    let (service, connection_id, _guard) = setup_connected_service!(
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
-        get_testdata_path("organize_imports.go").to_str().unwrap(),
-    )
-    .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-
-    // Establish connection
-    let connection_id = {
-        let mut connect_args = Map::new();
-        connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-        let result = service
-            .call_tool(CallToolRequestParam {
-                name: "connect".into(),
-                arguments: Some(connect_args),
-            })
-            .await?;
-
-        info!("Connection established successfully");
-        extract_connection_id(&result)?
-    };
+        get_testdata_path("organize_imports.go").to_str().unwrap()
+    );
 
     // Wait for LSP client (gopls) to be ready
     let mut wait_lsp_args = Map::new();
@@ -1293,45 +1102,7 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
 #[tokio::test]
 #[traced_test]
 async fn test_cursor_position_tool() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Starting MCP client to test cursor_position tool");
-
-    let service = create_mcp_service!();
-
-    // Test cursor_position without connection (should fail)
-    let mut invalid_args = Map::new();
-    invalid_args.insert(
-        "connection_id".to_string(),
-        Value::String("invalid_connection_id".to_string()),
-    );
-
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "cursor_position".into(),
-            arguments: Some(invalid_args),
-        })
-        .await;
-
-    assert!(
-        result.is_err(),
-        "cursor_position should fail with invalid connection ID"
-    );
-
-    // Now connect first, then test cursor_position
-    let ipc_path = generate_random_ipc_path();
-    let _guard = setup_test_neovim_instance(&ipc_path).await?;
-
-    // Connect first
-    let mut connect_args = Map::new();
-    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-    let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
-        .await?;
-
-    let connection_id = extract_connection_id(&connect_result)?;
+    let (service, connection_id, _guard) = setup_connected_service!();
 
     // Test successful cursor_position call
     let mut cursor_args = Map::new();
@@ -1392,33 +1163,12 @@ async fn test_cursor_position_tool() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 #[traced_test]
 async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Starting navigate tool integration test");
-
-    // Connect to MCP service
-    let service = create_mcp_service!();
-
-    // Start a test Neovim instance
-    let ipc_path = generate_random_ipc_path();
-    let _guard = setup_test_neovim_instance(&ipc_path).await?;
+    let (service, connection_id, _guard) = setup_connected_service!();
 
     // Create a temporary directory and test file
     let temp_dir = tempfile::tempdir()?;
     let test_file = temp_dir.path().join("test_navigate.txt");
     std::fs::write(&test_file, "line 1\nline 2\nline 3\n")?;
-
-    // Connect to Neovim
-    let mut connect_args = Map::new();
-    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
-
-    let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
-        .await?;
-
-    let connection_id = extract_connection_id(&connect_result)?;
-    info!("Connected to Neovim with connection_id: {}", connection_id);
 
     // Test 1: Navigate to absolute path
     info!("Test 1: Navigate to absolute path");

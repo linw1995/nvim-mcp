@@ -411,7 +411,7 @@ impl NeovimMcpServer {
             let _ = old_client.disconnect().await;
         }
 
-        let mut client = NeovimClient::new();
+        let mut client = NeovimClient::default();
         client.connect_path(&path).await?;
         client.setup_autocmd().await?;
 
@@ -461,7 +461,7 @@ impl NeovimMcpServer {
             let _ = old_client.disconnect().await;
         }
 
-        let mut client = NeovimClient::new();
+        let mut client = NeovimClient::default();
         client.connect_tcp(&address).await?;
         client.setup_autocmd().await?;
 

@@ -10,6 +10,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### New Features
+
+- **Dynamic Connection Status in Server Info**: Enhanced server information to
+  include real-time connection status display showing current connection mode
+  and active connections with their IDs and targets. This provides better
+  visibility into the server state for debugging and operational awareness
+
 ## [v0.6.0] - 2025-08-30
 
 ### Fixed

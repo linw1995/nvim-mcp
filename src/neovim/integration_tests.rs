@@ -5,38 +5,10 @@ use tracing::info;
 use tracing_test::traced_test;
 
 use crate::neovim::client::{DocumentIdentifier, Position, Range};
-use crate::neovim::{NeovimClient, NeovimClientTrait, NeovimError};
+use crate::neovim::{NeovimClient, NeovimClientTrait};
 use crate::test_utils::*;
 
 // Test helper functions to reduce boilerplate
-
-/// Helper function to wait for LSP analysis to complete (LSP ready + diagnostics)
-async fn wait_for_lsp_analysis_complete(
-    client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
-    timeout_ms: u64,
-) -> Result<(), NeovimError> {
-    client.wait_for_lsp_ready(None, timeout_ms).await?;
-    client.wait_for_diagnostics(None, timeout_ms).await?;
-    Ok(())
-}
-
-/// Helper for complete LSP setup including autocmd setup and waiting for analysis
-async fn setup_lsp_with_analysis(
-    client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
-) -> Result<(), NeovimError> {
-    client.setup_autocmd().await?;
-    wait_for_lsp_analysis_complete(client, 15000).await?;
-    Ok(())
-}
-
-/// Helper for LSP setup that only waits for LSP readiness (no diagnostics)
-async fn setup_lsp_ready_only(
-    client: &mut NeovimClient<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin>,
-) -> Result<(), NeovimError> {
-    client.setup_autocmd().await?;
-    client.wait_for_lsp_ready(None, 15000).await?;
-    Ok(())
-}
 
 #[tokio::test]
 #[traced_test]
@@ -50,7 +22,7 @@ async fn test_tcp_connection_lifecycle() {
         setup_neovim_instance(port).await
     };
     let _guard = NeovimProcessGuard::new(child, address.clone());
-    let mut client = NeovimClient::new();
+    let mut client = NeovimClient::default();
 
     // Test connection
     let result = client.connect_tcp(&address).await;
@@ -80,7 +52,7 @@ async fn test_tcp_connection_lifecycle() {
 async fn test_buffer_operations() {
     let ipc_path = generate_random_ipc_path();
 
-    let (client, _guard) = setup_connected_client_ipc(&ipc_path).await;
+    let (client, _guard) = setup_auto_connected_client_ipc(&ipc_path).await;
 
     // Test buffer listing
     let result = client.get_buffers().await;
@@ -110,7 +82,7 @@ async fn test_buffer_operations() {
 async fn test_lua_execution() {
     let ipc_path = generate_random_ipc_path();
 
-    let (client, _guard) = setup_connected_client_ipc(&ipc_path).await;
+    let (client, _guard) = setup_auto_connected_client_ipc(&ipc_path).await;
 
     // Test successful Lua execution
     let result = client.execute_lua("return 42").await;
@@ -146,7 +118,7 @@ async fn test_error_handling() {
     #[cfg(windows)]
     use tokio::net::windows::named_pipe::NamedPipeClient;
     #[cfg(unix)]
-    let client = NeovimClient::<UnixStream>::new();
+    let client = NeovimClient::<UnixStream>::default();
     #[cfg(windows)]
     let client = NeovimClient::<NamedPipeClient>::new();
 
@@ -174,9 +146,10 @@ async fn test_error_handling() {
 async fn test_connection_constraint() {
     let ipc_path = generate_random_ipc_path();
 
+    // Start neovim instance but don't auto-connect - we need to test manual connection behavior
     let child = setup_neovim_instance_ipc(&ipc_path).await;
     let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
+    let mut client = NeovimClient::default();
 
     // Connect to instance
     let result = client.connect_path(&ipc_path).await;
@@ -202,25 +175,14 @@ async fn test_connection_constraint() {
 async fn test_get_vim_diagnostics() {
     let ipc_path = generate_random_ipc_path();
 
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let diagnostic_path = get_testdata_path("diagnostic_problems.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
-        get_testdata_path("diagnostic_problems.lua")
-            .to_str()
-            .unwrap(),
+        cfg_path.to_str().unwrap(),
+        diagnostic_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for analysis to complete
-    setup_lsp_with_analysis(&mut client)
-        .await
-        .expect("LSP setup and analysis should complete");
 
     let result = client.get_buffer_diagnostics(0).await;
     assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
@@ -234,25 +196,14 @@ async fn test_get_vim_diagnostics() {
 async fn test_code_action() {
     let ipc_path = generate_random_ipc_path();
 
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let diagnostic_path = get_testdata_path("diagnostic_problems.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
-        get_testdata_path("diagnostic_problems.lua")
-            .to_str()
-            .unwrap(),
+        cfg_path.to_str().unwrap(),
+        diagnostic_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for analysis to complete
-    setup_lsp_with_analysis(&mut client)
-        .await
-        .expect("LSP setup and analysis should complete");
 
     let result = client.get_buffer_diagnostics(0).await;
     assert!(result.is_ok(), "Failed to get diagnostics: {result:?}");
@@ -296,23 +247,17 @@ async fn test_lsp_resolve_code_action() {
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
 
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for readiness
-    setup_lsp_ready_only(&mut client)
-        .await
-        .expect("LSP setup should complete");
+    // Wait for LSP readiness (diagnostics already waited in auto-connect)
+    let lsp_result = client.wait_for_lsp_ready(None, 15000).await;
+    assert!(lsp_result.is_ok(), "LSP should be ready");
 
     // Position cursor inside fmt.Println call (line 6, character 6)
     let result = client
@@ -411,23 +356,12 @@ async fn test_lsp_apply_workspace_edit() {
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for analysis to complete
-    setup_lsp_with_analysis(&mut client)
-        .await
-        .expect("LSP setup and analysis should complete");
 
     // Get buffer diagnostics to find modernization opportunities
     let result = client.get_buffer_diagnostics(0).await;
@@ -542,23 +476,17 @@ func main() {
 
     // Setup Neovim with gopls
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
 
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for readiness
-    setup_lsp_ready_only(&mut client)
-        .await
-        .expect("LSP setup should complete");
+    // Wait for LSP readiness (diagnostics already waited in auto-connect)
+    let lsp_result = client.wait_for_lsp_ready(None, 15000).await;
+    assert!(lsp_result.is_ok(), "LSP should be ready");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -657,24 +585,13 @@ pub fn main() !void {
 
     // Setup Neovim with zls (Zig Language Server)
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for analysis to complete
-    setup_lsp_with_analysis(&mut client)
-        .await
-        .expect("LSP setup and analysis should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -772,23 +689,13 @@ func main() {
 
     // Setup Neovim with gopls
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for readiness
-    setup_lsp_ready_only(&mut client)
-        .await
-        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -892,23 +799,13 @@ func main() {
 
     // Setup Neovim with gopls
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for readiness
-    setup_lsp_ready_only(&mut client)
-        .await
-        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -990,23 +887,13 @@ async fn test_lsp_rename_with_prepare() {
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for readiness
-    setup_lsp_ready_only(&mut client)
-        .await
-        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1088,23 +975,13 @@ async fn test_lsp_rename_without_prepare() {
     fs::write(&temp_file_path, go_content).expect("Failed to write temp Go file");
 
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for readiness
-    setup_lsp_ready_only(&mut client)
-        .await
-        .expect("LSP setup should complete");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();
@@ -1216,23 +1093,12 @@ main();
         .expect("Failed to write temp TypeScript file");
 
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let (client, guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for analysis to complete
-    setup_lsp_with_analysis(&mut client)
-        .await
-        .expect("LSP setup and analysis should complete");
 
     (temp_dir, guard, client)
 }
@@ -1309,23 +1175,13 @@ main();
         .expect("Failed to write temp TypeScript file");
 
     let ipc_path = generate_random_ipc_path();
-    let child = setup_neovim_instance_ipc_advance(
+    let cfg_path = get_testdata_path("cfg_lsp.lua");
+    let (client, _guard) = setup_auto_connected_client_ipc_advance(
         &ipc_path,
-        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
-    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
-    let mut client = NeovimClient::new();
-
-    // Connect to instance
-    let result = client.connect_path(&ipc_path).await;
-    assert!(result.is_ok(), "Failed to connect to instance");
-
-    // Set up LSP and wait for analysis to complete
-    setup_lsp_with_analysis(&mut client)
-        .await
-        .expect("LSP setup and analysis should complete");
 
     use crate::neovim::FormattingOptions;
     let tab_options = FormattingOptions {
