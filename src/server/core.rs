@@ -131,7 +131,7 @@ impl Default for NeovimMcpServer {
 }
 
 /// Generate BLAKE3 hash from input string
-fn b3sum(input: &str) -> String {
+pub fn b3sum(input: &str) -> String {
     blake3::hash(input.as_bytes()).to_hex().to_string()
 }
 
@@ -245,7 +245,7 @@ pub async fn auto_connect_single_target(
     }
 
     // Import NeovimClient here to avoid circular imports
-    let mut client = crate::neovim::NeovimClient::new();
+    let mut client = crate::neovim::NeovimClient::default();
     client.connect_path(target).await?;
     client.setup_autocmd().await?;
 

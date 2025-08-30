@@ -395,7 +395,7 @@ pub async fn setup_test_neovim_instance(
 /// Setup a connected client with TCP connection
 pub async fn setup_connected_client(port: u16) -> (impl NeovimClientTrait, NeovimProcessGuard) {
     let child = setup_neovim_instance(port).await;
-    let mut client = NeovimClient::new();
+    let mut client = NeovimClient::default();
     let address = format!("{HOST}:{port}");
 
     let result = client.connect_tcp(&address).await;
@@ -414,7 +414,7 @@ pub async fn setup_connected_client_ipc(
     ipc_path: &str,
 ) -> (impl NeovimClientTrait, NeovimIpcGuard) {
     let child = setup_neovim_instance_ipc(ipc_path).await;
-    let mut client = NeovimClient::new();
+    let mut client = NeovimClient::default();
 
     let result = client.connect_path(ipc_path).await;
     if result.is_err() {
@@ -425,4 +425,100 @@ pub async fn setup_connected_client_ipc(
 
     let guard = NeovimIpcGuard::new(child, ipc_path.to_string());
     (client, guard)
+}
+
+/// Setup connected client with auto-setup (reduces manual connection boilerplate)
+/// This mimics the auto-connect pattern by doing connection + setup in one call
+pub async fn setup_auto_connected_client_ipc(
+    ipc_path: &str,
+) -> (NeovimClient<tokio::net::UnixStream>, NeovimIpcGuard) {
+    let child = setup_neovim_instance_ipc(ipc_path).await;
+    let mut client = NeovimClient::default();
+
+    let result = client.connect_path(ipc_path).await;
+    if result.is_err() {
+        // Create guard temporarily to ensure cleanup on failure
+        let _guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+        panic!("Failed to connect to Neovim: {result:?}");
+    }
+
+    // Auto-setup: setup autocmd (like auto-connect would do)
+    let setup_result = client.setup_autocmd().await;
+    if setup_result.is_err() {
+        let _guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+        panic!("Failed to setup autocmd: {setup_result:?}");
+    }
+
+    let guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+    (client, guard)
+}
+
+/// Setup connected client with advanced configuration and auto-setup (LSP + analysis)
+/// This mimics auto-connect behavior with full LSP setup
+pub async fn setup_auto_connected_client_ipc_advance(
+    ipc_path: &str,
+    config_path: &str,
+    open_file: &str,
+) -> (NeovimClient<tokio::net::UnixStream>, NeovimIpcGuard) {
+    let child = setup_neovim_instance_ipc_advance(ipc_path, config_path, open_file).await;
+    let mut client = NeovimClient::default();
+
+    let result = client.connect_path(ipc_path).await;
+    if result.is_err() {
+        let _guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+        panic!("Failed to connect to Neovim: {result:?}");
+    }
+
+    // Auto-setup: setup autocmd + wait for LSP analysis (like auto-connect + analysis)
+    let setup_result = client.setup_autocmd().await;
+    if setup_result.is_err() {
+        let _guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+        panic!("Failed to setup autocmd: {setup_result:?}");
+    }
+
+    // Wait for LSP to be ready and analysis to complete
+    let lsp_result = client.wait_for_lsp_ready(None, 15000).await;
+    if lsp_result.is_err() {
+        let _guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+        panic!("Failed to wait for LSP: {lsp_result:?}");
+    }
+
+    let diagnostics_result = client.wait_for_diagnostics(None, 15000).await;
+    if diagnostics_result.is_err() {
+        let _guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+        panic!("Failed to wait for diagnostics: {diagnostics_result:?}");
+    }
+
+    let guard = NeovimIpcGuard::new(child, ipc_path.to_string());
+    (client, guard)
+}
+
+/// Get the path to the compiled binary for testing
+pub fn get_compiled_binary() -> PathBuf {
+    let mut binary_path = get_target_dir();
+    binary_path.push("debug");
+    binary_path.push("nvim-mcp");
+    if !binary_path.exists() {
+        panic!(
+            "Compiled binary not found at {:?}. Please run `cargo build` first.",
+            binary_path
+        );
+    }
+
+    binary_path
+}
+
+/// Get the target directory path for the compiled binary
+pub fn get_target_dir() -> PathBuf {
+    std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            // Default to target directory if not set
+            std::env::var("CARGO_MANIFEST_DIR").map(|dir| {
+                let mut path = PathBuf::from(dir);
+                path.push("target");
+                path
+            })
+        })
+        .expect("Failed to determine target directory")
 }
