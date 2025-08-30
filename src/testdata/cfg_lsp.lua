@@ -40,6 +40,13 @@ local M = require("nvim-mcp")
 local MCP = M.MCP
 M.setup({
     custom_tools = {
+        format = {
+            -- Do nothing actually. Test various of configuration options
+            description = "Run format on the current buffer.",
+            handler = function()
+                return MCP.success("success")
+            end,
+        },
         save_buffer = {
             description = "Save a specific buffer by ID",
             parameters = {

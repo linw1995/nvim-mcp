@@ -5,6 +5,23 @@ local has_setup = false
 -- Global registry to store configured tools
 M._tool_registry = {}
 
+---@class SetupOptions
+---@field custom_tools table<string, CustomTool>|nil Custom tools configuration
+
+---@class CustomTool
+---@field description string Tool description
+---@field parameters JSONSchema|nil JSON Schema specification for tool parameters (follows JSON Schema spec)
+---@field handler function Tool execution handler
+
+---@class JSONSchema
+---@field type string Schema type ("object", "string", "number", "boolean", "array", etc.)
+---@field properties table<string, JSONSchema>|nil Object properties (for type="object")
+---@field required string[]|nil Required property names (for type="object")
+---@field items JSONSchema|nil Array item schema (for type="array")
+---@field minimum number|nil Minimum value (for numeric types)
+---@field maximum number|nil Maximum value (for numeric types)
+---@field description string|nil Parameter description
+
 -- MCP helper functions for creating responses
 M.MCP = {
     success = function(data)
@@ -73,6 +90,8 @@ local function generate_pipe_path()
     return string.format("%s/nvim-mcp.%s.%d.sock", temp_dir, escaped_path, pid)
 end
 
+--- Setup nvim-mcp with custom tools and configuration
+---@param opts SetupOptions|nil Configuration options
 function M.setup(opts)
     if has_setup then
         return
@@ -89,8 +108,10 @@ function M.setup(opts)
                 vim.notify("Invalid tool config for: " .. tool_name, vim.log.levels.ERROR)
             else
                 M._tool_registry[tool_name] = {
-                    description = tool_config.description,
-                    parameters = tool_config.parameters or { type = "object", properties = {} },
+                    description = tool_config.description or "",
+                    parameters = tool_config.parameters or {
+                        type = "object",
+                    },
                     handler = tool_config.handler,
                 }
             end
@@ -111,10 +132,8 @@ function M.get_registered_tools()
     for tool_name, tool_config in pairs(M._tool_registry) do
         tools[tool_name] = {
             name = tool_name,
-            description = tool_config.description or "",
-            input_schema = tool_config.parameters or {
-                type = "object",
-            },
+            description = tool_config.description,
+            input_schema = tool_config.parameters,
         }
     end
     if next(tools) == nil then
