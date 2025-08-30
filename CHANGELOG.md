@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.6.0] - 2025-08-30
+
 ### Fixed
 
 - **FormattingOptions Deserialization**: Fixed `FormattingOptions` to support both

@@ -1,5 +1,7 @@
 # Neovim MCP Server
 
+[![codecov](https://codecov.io/gh/linw1995/nvim-mcp/graph/badge.svg?token=OFWOKQQFSD)](https://codecov.io/gh/linw1995/nvim-mcp)
+
 A Model Context Protocol (MCP) server that provides seamless integration with
 Neovim instances, enabling AI assistants to interact with your editor through
 connections and access diagnostic information via structured resources.
