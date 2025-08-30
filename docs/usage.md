@@ -5,30 +5,7 @@ nvim-mcp server.
 
 ## Quick Start
 
-### 1. Start the Server
-
-```bash
-# Start as stdio MCP server (default, manual connection mode)
-nvim-mcp
-
-# Auto-connect to current project Neovim instances
-nvim-mcp --connect auto
-
-# Connect to specific target (TCP address or socket path)
-nvim-mcp --connect 127.0.0.1:6666
-nvim-mcp --connect /tmp/nvim.sock
-
-# With custom logging
-nvim-mcp --log-file ./nvim-mcp.log --log-level debug
-
-# HTTP server mode with auto-connection
-nvim-mcp --http-port 8080 --connect auto
-
-# HTTP server mode with custom bind address
-nvim-mcp --http-port 8080 --http-host 0.0.0.0
-```
-
-### 2. Setup Neovim Integration
+### 1. Setup Neovim Integration
 
 #### Option A: Using Neovim Plugin (Recommended)
 
@@ -48,20 +25,54 @@ return {
 }
 ```
 
-This plugin automatically creates a Unix socket/pipe for MCP connections.
+This plugin automatically creates a Unix-Socket/pipe for MCP connections.
 
-#### Option B: Manual TCP Setup
+#### Option B: Manual Setup
 
-Start Neovim with TCP listening:
+Start Neovim with TCP listening or creating Unix-Socket:
 
 ```bash
 nvim --listen 127.0.0.1:6666
+
+# Or creating Unix-Socket
+nvim --listen ./nvim.sock
 ```
 
 Or add to your Neovim config:
 
 ```lua
 vim.fn.serverstart("127.0.0.1:6666")
+
+-- Or creating Unix-Socket
+vim.fn.serverstart("./nvim.sock")
+```
+
+### 2. Start the Server working with various clients
+
+```bash
+# Configure claude to auto-connect to current project Neovim instances (recommended)
+claude mcp add -s local nvim -- nvim-mcp --log-file . \
+  --log-level debug --connect auto
+
+# Your full options to start the server
+# Start as stdio MCP server (default, manual connection mode)
+nvim-mcp
+
+# Auto-connect to current project Neovim instances
+nvim-mcp --connect auto
+
+# Connect to specific target (TCP address or socket path)
+nvim-mcp --connect 127.0.0.1:6666
+nvim-mcp --connect /tmp/nvim.sock
+
+# With custom logging
+nvim-mcp --log-file ./nvim-mcp.log --log-level debug
+
+# HTTP server mode with auto-connection
+nvim-mcp --http-port 8080 --connect auto
+
+# HTTP server mode with custom bind address
+nvim-mcp --http-port 8080 --http-host 0.0.0.0
 ```
 
 ## Command Line Options
@@ -153,31 +164,6 @@ nvim-mcp --http-port 8080 --http-host 0.0.0.0
 # With custom logging
 nvim-mcp --http-port 8080 --log-file ./nvim-mcp.log --log-level debug
 ```
-
-### HTTP Transport Features
-
-- **Streamable HTTP**: Uses streamable HTTP server transport for real-time communication
-- **Stateful Mode**: Maintains session state across HTTP requests
-- **CORS Support**: Includes CORS middleware for cross-origin requests
-- **Concurrent Sessions**: Supports multiple concurrent HTTP client sessions
-
-### HTTP Client Integration
-
-When using HTTP transport, MCP clients should connect to the HTTP endpoint
-instead of stdio. The exact integration depends on your MCP client library,
-but generally involves:
-
-1. Configure client to use HTTP transport instead of stdio
-2. Point to the server URL (e.g., `http://localhost:8080`)
-3. Use the same MCP tools and resources as with stdio transport
-
-The HTTP transport maintains full compatibility with all existing MCP tools
-and resources - only the transport layer changes.
-
-## Multi-Connection Architecture
-
-The server supports managing multiple concurrent Neovim instances through a
-multi-connection architecture with several key benefits:
 
 ### Architecture Features
 

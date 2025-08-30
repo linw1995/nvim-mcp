@@ -87,8 +87,6 @@ For detailed information, see:
 - **[Resources](docs/resources.md)**: MCP resources and URI schemes
 - **[Development](docs/development.md)**: Development setup, testing,
   and contributing
-- **[Architecture](docs/architecture.md)**: Technical architecture
-  and design details
 
 ## Development
 
