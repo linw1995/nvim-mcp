@@ -44,15 +44,18 @@ cargo install --path .
 
 <!-- markdownlint-configure-file
 {
-  "no-bare-urls": false
+  "no-inline-html": false
 }
 -->
 
 See how the nvim-mcp server helps fix workspace diagnostics
 in real-time using AI assistance and LSP integration.
-(From https://github.com/linw1995/nvim-mcp/discussions/10)
+(From [#10](https://github.com/linw1995/nvim-mcp/discussions/10))
 
-https://github.com/user-attachments/assets/b0fdf78c-c80b-433f-9b7f-0d123d9a6a7e
+<video
+  src="https://github.com/user-attachments/assets/6a9b0d84-db28-4896-a843-3798e70c8ba8"
+  style="max-height:640px; min-height: 200px">
+</video>
 
 ## Quick Start
 
