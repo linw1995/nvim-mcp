@@ -164,35 +164,3 @@ nvim-mcp --http-port 8080 --http-host 0.0.0.0
 # With custom logging
 nvim-mcp --http-port 8080 --log-file ./nvim-mcp.log --log-level debug
 ```
-
-### Architecture Features
-
-- **Deterministic Connection IDs**: Each connection gets a consistent ID based
-  on BLAKE3 hashing of the target string
-- **Independent Sessions**: Each Neovim instance operates independently without
-  interfering with others
-- **Thread-Safe Operations**: Concurrent access to multiple connections using
-  lock-free data structures
-- **Connection Isolation**: Diagnostics and resources are scoped to specific
-  connections
-
-### Typical Workflow
-
-1. **Discovery**: Use `get_targets` to find available Neovim socket paths
-2. **Connection**: Use `connect` or `connect_tcp` to establish connection and
-   get `connection_id`
-3. **Operations**: Use connection-aware tools with the `connection_id` parameter
-4. **Resource Access**: Read connection-scoped resources using the
-   `connection_id` in URI patterns
-5. **Cleanup**: Optionally use `disconnect` when done (connections persist
-   until explicitly closed)
-
-### Benefits
-
-- **Concurrent Development**: Work with multiple Neovim instances simultaneously
-- **Session Persistence**: Connection IDs remain consistent across MCP server
-  restarts
-- **Resource Efficiency**: Each connection operates independently without
-  blocking others
-- **Clear Separation**: Connection-scoped resources eliminate ambiguity about
-  which Neovim instance data belongs to
