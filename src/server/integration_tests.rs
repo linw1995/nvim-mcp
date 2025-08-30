@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
     serde_json::{Map, Value},
@@ -11,34 +9,6 @@ use tracing::{error, info};
 use tracing_test::traced_test;
 
 use crate::{server::core::b3sum, test_utils::*};
-
-fn get_compiled_binary() -> PathBuf {
-    let mut binary_path = get_target_dir();
-    binary_path.push("debug");
-    binary_path.push("nvim-mcp");
-    if !binary_path.exists() {
-        panic!(
-            "Compiled binary not found at {:?}. Please run `cargo build` first.",
-            binary_path
-        );
-    }
-
-    binary_path
-}
-
-fn get_target_dir() -> PathBuf {
-    std::env::var("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .or_else(|_| {
-            // Default to target directory if not set
-            std::env::var("CARGO_MANIFEST_DIR").map(|dir| {
-                let mut path = PathBuf::from(dir);
-                path.push("target");
-                path
-            })
-        })
-        .expect("Failed to determine target directory")
-}
 
 // Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {

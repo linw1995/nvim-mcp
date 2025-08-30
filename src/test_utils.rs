@@ -392,41 +392,6 @@ pub async fn setup_test_neovim_instance(
     Ok(NeovimIpcGuard::new(child, ipc_path.to_string()))
 }
 
-/// Setup a connected client with TCP connection
-pub async fn setup_connected_client(port: u16) -> (impl NeovimClientTrait, NeovimProcessGuard) {
-    let child = setup_neovim_instance(port).await;
-    let mut client = NeovimClient::default();
-    let address = format!("{HOST}:{port}");
-
-    let result = client.connect_tcp(&address).await;
-    if result.is_err() {
-        // Create guard temporarily to ensure cleanup on failure
-        let _guard = NeovimProcessGuard::new(child, address.clone());
-        panic!("Failed to connect to Neovim: {result:?}");
-    }
-
-    let guard = NeovimProcessGuard::new(child, address);
-    (client, guard)
-}
-
-/// Setup a connected client with IPC connection
-pub async fn setup_connected_client_ipc(
-    ipc_path: &str,
-) -> (impl NeovimClientTrait, NeovimIpcGuard) {
-    let child = setup_neovim_instance_ipc(ipc_path).await;
-    let mut client = NeovimClient::default();
-
-    let result = client.connect_path(ipc_path).await;
-    if result.is_err() {
-        // Create guard temporarily to ensure cleanup on failure
-        let _guard = NeovimIpcGuard::new(child, ipc_path.to_string());
-        panic!("Failed to connect to Neovim: {result:?}");
-    }
-
-    let guard = NeovimIpcGuard::new(child, ipc_path.to_string());
-    (client, guard)
-}
-
 /// Setup connected client with auto-setup (reduces manual connection boilerplate)
 /// This mimics the auto-connect pattern by doing connection + setup in one call
 pub async fn setup_auto_connected_client_ipc(
