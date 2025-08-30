@@ -41,7 +41,7 @@ tracing-appender = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 
 # MCP Protocol Implementation
-rmcp = { version = "0.6.0", features = [
+rmcp = { version = "0.6", features = [
   "transport-io",
   "transport-child-process",
   "transport-streamable-http-server",
@@ -81,9 +81,6 @@ blake3 = "1.5"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 rand = "0.9.2"
 tempfile = "3.0"
-
-[patch.crates-io]
-rmcp = { git = "https://github.com/linw1995/rust-sdk.git" }
 
 [build-dependencies]
 chrono = { version = "0.4" }
