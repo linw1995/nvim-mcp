@@ -47,6 +47,16 @@ enum ConnectBehavior {
     SpecificTarget(String),
 }
 
+impl std::fmt::Display for ConnectBehavior {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectBehavior::Manual => write!(f, "manual"),
+            ConnectBehavior::Auto => write!(f, "auto"),
+            ConnectBehavior::SpecificTarget(target) => write!(f, "{}", target),
+        }
+    }
+}
+
 impl FromStr for ConnectBehavior {
     type Err = String;
 
@@ -141,7 +151,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     info!("Starting nvim-mcp Neovim server");
-    let server = NeovimMcpServer::new();
+    let connect_mode = cli.connect.to_string();
+    let server = NeovimMcpServer::with_connect_mode(Some(connect_mode.clone()));
 
     // Handle connection mode
     let connection_ids = match cli.connect {
@@ -194,7 +205,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let addr = format!("{}:{}", cli.http_host, port);
         info!("Starting HTTP server on {}", addr);
         let service = TowerToHyperService::new(StreamableHttpService::new(
-            || Ok(NeovimMcpServer::new()),
+            move || {
+                Ok(NeovimMcpServer::with_connect_mode(Some(
+                    connect_mode.clone(),
+                )))
+            },
             LocalSessionManager::default().into(),
             StreamableHttpServerConfig {
                 stateful_mode: true,
