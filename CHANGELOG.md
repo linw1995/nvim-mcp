@@ -50,6 +50,9 @@ All notable changes to this project will be documented in this file.
   with HTML, Cobertura, and Markdown report generation
 - **CI Coverage Integration**: Added codecov.io integration with automated
   coverage reporting in GitHub Actions
+- **Lua Plugin Type Annotations**: Added comprehensive type annotations for
+  `SetupOptions`, `CustomTool`, and `JSONSchema` classes to improve IDE support
+  and documentation clarity
 
 ## [v0.5.0] - 2025-08-20
 
