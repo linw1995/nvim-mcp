@@ -15,6 +15,7 @@ include = [
   "/src",
   "/build.rs",
   "/docs/instructions.md",
+  "/docs/tools/",
   "/.packaged-commit",
   "/Cargo.toml",
   "/Cargo.lock",
