@@ -76,6 +76,42 @@ fn extract_connection_id(
     Err("Failed to extract connection_id from response".into())
 }
 
+#[traced_test]
+#[tokio::test]
+async fn test_graceful_close_mcp_server() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting MCP server using pre-compiled binary");
+
+    let mut child = Command::new(get_compiled_binary())
+        .stdin(std::process::Stdio::piped())
+        .spawn()?;
+
+    // Wait a moment to ensure the server starts
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    // Check if the process is still running
+    match child.try_wait()? {
+        Some(status) => {
+            error!("MCP server exited prematurely with status: {}", status);
+            return Err("MCP server exited prematurely".into());
+        }
+        None => {
+            info!("MCP server is running");
+        }
+    }
+
+    // Clean up: terminate the server process
+    // Close stdin
+    if let Some(stdin) = child.stdin.take() {
+        drop(stdin);
+    }
+    // Or send SIGTERM signal
+
+    child.wait().await?;
+    info!("MCP server process terminated");
+
+    Ok(())
+}
+
 #[tokio::test]
 #[traced_test]
 async fn test_mcp_server_connection() -> Result<(), Box<dyn std::error::Error>> {
