@@ -15,9 +15,24 @@ All notable changes to this project will be documented in this file.
 - **FormattingOptions Deserialization**: Fixed `FormattingOptions` to support both
   string and struct deserialization formats for better compatibility with various
   MCP clients
+- **Dynamic Tools Plugin Dependency** (#62): Added plugin availability check before
+  Lua tool discovery to prevent errors when nvim-mcp plugin is not installed.
+  Server now gracefully handles missing plugin and continues with static tools only
+- **Lua Tool Discovery for Empty Registries**: Fixed handling of cases where no
+  Lua tools are registered by returning null/empty map instead of failing. Added
+  fallback values for missing tool descriptions and input schemas to prevent
+  errors during tool registration
+- **Test Environment Isolation**: Added `-i NONE` flag to Neovim test instances
+  to disable shada file loading, ensuring consistent test behavior across different
+  environments and preventing interference from user's vim history and settings
 
 ### New Features
 
+- **Navigation Tool**: Added `navigate` tool to navigate to a specific position
+  in the current buffer or open a file at a specific position with universal
+  document identification support
+- **Cursor Position Tool**: Added `cursor_position` tool to get current cursor
+  position with buffer name and zero-based row/col coordinates
 - **LSP Readiness Tool**: Added `wait_for_lsp_ready` tool for ensuring LSP client
   readiness before performing operations, improving reliability of LSP workflows
 

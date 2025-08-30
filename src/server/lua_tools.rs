@@ -4,7 +4,7 @@ use rmcp::{
     ErrorData as McpError,
     model::{CallToolResult, Content},
 };
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use super::core::NeovimMcpServer;
 use super::hybrid_router::DynamicTool;
@@ -178,12 +178,36 @@ impl LuaToolValidator {
     }
 }
 
+// Helper function to check if nvim-mcp plugin is available
+#[instrument(skip(client))]
+async fn check_plugin_availability(client: &dyn NeovimClientTrait) -> Result<bool, NeovimError> {
+    let lua_code = r#"
+        local success, _ = pcall(require, 'nvim-mcp')
+        return success
+    "#;
+
+    let result = client.execute_lua(lua_code).await?;
+
+    match result {
+        rmpv::Value::Boolean(available) => Ok(available),
+        _ => Ok(false), // Default to false if we get unexpected response
+    }
+}
+
 // CORE FUNCTION: Discover tools from Neovim instance
 #[instrument(skip(client))]
 pub async fn discover_lua_tools(
     client: &dyn NeovimClientTrait,
 ) -> Result<HashMap<String, LuaToolConfig>, NeovimError> {
     debug!("Discovering Lua tools from Neovim instance");
+
+    // Check if nvim-mcp plugin is available before attempting discovery
+    let plugin_available = check_plugin_availability(client).await?;
+
+    if !plugin_available {
+        warn!("nvim-mcp Lua plugin is not installed, skipping dynamic tool discovery");
+        return Ok(HashMap::new());
+    }
 
     let lua_code = r#"
         local nvim_mcp = require('nvim-mcp')
@@ -196,29 +220,32 @@ pub async fn discover_lua_tools(
     let json_result = convert_nvim_value_to_json(result)?;
 
     // First deserialize into temporary struct without validator
-    let temp_tools: HashMap<String, LuaToolConfig> = serde_json::from_value(json_result)
+    let temp_tools: Option<HashMap<String, LuaToolConfig>> = serde_json::from_value(json_result)
         .map_err(|e| NeovimError::Api(format!("Failed to parse tool configs: {}", e)))?;
 
-    // Convert to proper LuaToolConfig with validators
-    let mut tools = HashMap::new();
-    for (key, mut tool) in temp_tools {
-        if let Err(e) = tool.init() {
-            let tool_name = tool.name();
-            tracing::warn!("Failed to create validator for tool '{}': {}", tool_name, e);
-            return Err(NeovimError::Api(format!(
-                "Failed to initialize tool '{}': {}",
-                tool_name, e
-            )));
+    if let Some(mut tools) = temp_tools {
+        info!("Discovered {} Lua tools", tools.len());
+        for tool in tools.values_mut() {
+            if let Err(e) = tool.init() {
+                let tool_name = tool.name();
+                tracing::warn!("Failed to create validator for tool '{}': {}", tool_name, e);
+                return Err(NeovimError::Api(format!(
+                    "Failed to initialize tool '{}': {}",
+                    tool_name, e
+                )));
+            }
         }
-        tools.insert(key, tool);
+        Ok(tools)
+    } else {
+        info!("No Lua tools discovered");
+        return Ok(HashMap::new());
     }
-
-    debug!("Discovered {} Lua tools", tools.len());
-    Ok(tools)
 }
 
 // Helper function to convert nvim_rs::Value to serde_json::Value
-fn convert_nvim_value_to_json(nvim_value: rmpv::Value) -> Result<serde_json::Value, NeovimError> {
+pub fn convert_nvim_value_to_json(
+    nvim_value: rmpv::Value,
+) -> Result<serde_json::Value, NeovimError> {
     match nvim_value {
         rmpv::Value::Nil => Ok(serde_json::Value::Null),
         rmpv::Value::Boolean(b) => Ok(serde_json::Value::Bool(b)),

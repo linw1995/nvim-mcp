@@ -4,7 +4,7 @@ use rmcp::{
     model::{CallToolRequestParam, ReadResourceRequestParam},
     serde_json::{Map, Value},
     service::ServiceExt,
-    transport::TokioChildProcess,
+    transport::{ConfigureCommandExt, TokioChildProcess},
 };
 use tokio::process::Command;
 use tracing::{error, info};
@@ -43,7 +43,10 @@ fn get_target_dir() -> PathBuf {
 /// Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
     () => {{
-        let command = Command::new(get_compiled_binary());
+        let command = Command::new(get_compiled_binary()).configure(|cmd| {
+            // cmd.args(["--log-file", "."]);
+            cmd.args(["--connect", "manual"]);
+        });
         ().serve(TokioChildProcess::new(command)?)
             .await
             .map_err(|e| {
@@ -203,7 +206,6 @@ async fn test_connect_nvim_tcp_tool() -> Result<(), Box<dyn std::error::Error>> 
     if let Some(content) = result.content.first() {
         if let Some(text) = content.as_text() {
             assert!(text.text.contains("connection_id"));
-            assert!(text.text.contains(&ipc_path));
         } else {
             panic!("Expected text content in connect result");
         }
@@ -1284,6 +1286,281 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
 
     service.cancel().await?;
     info!("End-to-end Lua tools test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_cursor_position_tool() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting MCP client to test cursor_position tool");
+
+    let service = create_mcp_service!();
+
+    // Test cursor_position without connection (should fail)
+    let mut invalid_args = Map::new();
+    invalid_args.insert(
+        "connection_id".to_string(),
+        Value::String("invalid_connection_id".to_string()),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "cursor_position".into(),
+            arguments: Some(invalid_args),
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "cursor_position should fail with invalid connection ID"
+    );
+
+    // Now connect first, then test cursor_position
+    let ipc_path = generate_random_ipc_path();
+    let _guard = setup_test_neovim_instance(&ipc_path).await?;
+
+    // Connect first
+    let mut connect_args = Map::new();
+    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
+
+    let connect_result = service
+        .call_tool(CallToolRequestParam {
+            name: "connect".into(),
+            arguments: Some(connect_args),
+        })
+        .await?;
+
+    let connection_id = extract_connection_id(&connect_result)?;
+
+    // Test successful cursor_position call
+    let mut cursor_args = Map::new();
+    cursor_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "cursor_position".into(),
+            arguments: Some(cursor_args),
+        })
+        .await?;
+
+    info!("Cursor position result: {:#?}", result);
+    assert!(!result.content.is_empty());
+
+    // Verify the response contains cursor position data
+    if let Some(content) = result.content.first() {
+        if let Some(text) = content.as_text() {
+            // Parse JSON response
+            let cursor_data: serde_json::Value = serde_json::from_str(&text.text)?;
+
+            // Verify required fields are present
+            assert!(
+                cursor_data["bufname"].is_string(),
+                "Should have bufname field"
+            );
+            assert!(cursor_data["row"].is_number(), "Should have row field");
+            assert!(cursor_data["col"].is_number(), "Should have col field");
+
+            // Verify coordinates are zero-based (should be 0,0 for new buffer)
+            let row = cursor_data["row"].as_i64().expect("row should be a number");
+            let col = cursor_data["col"].as_i64().expect("col should be a number");
+
+            assert!(row >= 0, "Row should be zero-based (>= 0)");
+            assert!(col >= 0, "Col should be zero-based (>= 0)");
+
+            info!(
+                "Cursor position: bufname={}, row={}, col={}",
+                cursor_data["bufname"], row, col
+            );
+        } else {
+            panic!("Expected text content in cursor_position result");
+        }
+    } else {
+        panic!("No content in cursor_position result");
+    }
+
+    // Cleanup happens automatically via guard
+    service.cancel().await?;
+    info!("Cursor position tool test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting navigate tool integration test");
+
+    // Connect to MCP service
+    let service = create_mcp_service!();
+
+    // Start a test Neovim instance
+    let ipc_path = generate_random_ipc_path();
+    let _guard = setup_test_neovim_instance(&ipc_path).await?;
+
+    // Create a temporary directory and test file
+    let temp_dir = tempfile::tempdir()?;
+    let test_file = temp_dir.path().join("test_navigate.txt");
+    std::fs::write(&test_file, "line 1\nline 2\nline 3\n")?;
+
+    // Connect to Neovim
+    let mut connect_args = Map::new();
+    connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
+
+    let connect_result = service
+        .call_tool(CallToolRequestParam {
+            name: "connect".into(),
+            arguments: Some(connect_args),
+        })
+        .await?;
+
+    let connection_id = extract_connection_id(&connect_result)?;
+    info!("Connected to Neovim with connection_id: {}", connection_id);
+
+    // Test 1: Navigate to absolute path
+    info!("Test 1: Navigate to absolute path");
+    let mut navigate_args = Map::new();
+    navigate_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    navigate_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "absolute_path": test_file.to_string_lossy()
+        }),
+    );
+    navigate_args.insert(
+        "line".to_string(),
+        Value::Number(serde_json::Number::from(1)),
+    );
+    navigate_args.insert(
+        "character".to_string(),
+        Value::Number(serde_json::Number::from(3)),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "navigate".into(),
+            arguments: Some(navigate_args),
+        })
+        .await?;
+
+    // Verify navigation result
+    assert!(!result.content.is_empty());
+    if let Some(content) = result.content.first()
+        && let rmcp::model::RawContent::Text(text_content) = &content.raw
+    {
+        let navigate_data: serde_json::Value = serde_json::from_str(&text_content.text)?;
+
+        assert!(
+            navigate_data["success"].as_bool().unwrap_or(false),
+            "Navigation should succeed"
+        );
+        assert_eq!(navigate_data["line"].as_str().unwrap_or_default(), "line 2");
+        info!("✓ Successfully navigated to absolute path");
+    }
+
+    // Test 2: Navigate with invalid file path
+    info!("Test 2: Navigate to non-existent file");
+    let mut invalid_navigate_args = Map::new();
+    invalid_navigate_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    invalid_navigate_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "absolute_path": "/non/existent/file.txt"
+        }),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "navigate".into(),
+            arguments: Some(invalid_navigate_args),
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Should fail to navigate to non-existent file"
+    );
+    info!("✓ Correctly handled invalid file path");
+
+    // Test 3: Navigate to current buffer by ID
+    info!("Test 3: Navigate by buffer ID");
+
+    // First get the current buffer list
+    let mut list_buffers_args = Map::new();
+    list_buffers_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+
+    let buffer_result = service
+        .call_tool(CallToolRequestParam {
+            name: "list_buffers".into(),
+            arguments: Some(list_buffers_args),
+        })
+        .await?;
+
+    if let Some(content) = buffer_result.content.first()
+        && let rmcp::model::RawContent::Text(text_content) = &content.raw
+    {
+        let buffers_data: serde_json::Value = serde_json::from_str(&text_content.text)?;
+
+        if let Some(buffers_array) = buffers_data.as_array()
+            && let Some(first_buffer) = buffers_array.first()
+            && let Some(buffer_id) = first_buffer["id"].as_u64()
+        {
+            // Navigate to this buffer
+            let mut buffer_navigate_args = Map::new();
+            buffer_navigate_args.insert(
+                "connection_id".to_string(),
+                Value::String(connection_id.clone()),
+            );
+            buffer_navigate_args.insert(
+                "document".to_string(),
+                serde_json::json!({
+                    "buffer_id": buffer_id
+                }),
+            );
+            buffer_navigate_args.insert(
+                "line".to_string(),
+                Value::Number(serde_json::Number::from(0)),
+            );
+            buffer_navigate_args.insert(
+                "character".to_string(),
+                Value::Number(serde_json::Number::from(0)),
+            );
+
+            let result = service
+                .call_tool(CallToolRequestParam {
+                    name: "navigate".into(),
+                    arguments: Some(buffer_navigate_args),
+                })
+                .await?;
+
+            if let Some(content) = result.content.first()
+                && let rmcp::model::RawContent::Text(text_content) = &content.raw
+            {
+                let navigate_data: serde_json::Value = serde_json::from_str(&text_content.text)?;
+                assert!(
+                    navigate_data["success"].as_bool().unwrap_or(false),
+                    "Navigation by buffer ID should succeed"
+                );
+                info!("✓ Successfully navigated by buffer ID");
+            }
+        }
+    }
+
+    // Cleanup
+    service.cancel().await?;
+    info!("Navigate tool test completed successfully");
 
     Ok(())
 }

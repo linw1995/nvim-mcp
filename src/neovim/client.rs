@@ -203,6 +203,12 @@ pub trait NeovimClientTrait: Sync {
         document: DocumentIdentifier,
         text_edits: Vec<TextEdit>,
     ) -> Result<(), NeovimError>;
+    /// Navigate to a specific position in a document
+    async fn navigate(
+        &self,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<NavigateResult, NeovimError>;
 }
 
 /// Notification tracking structure
@@ -976,6 +982,13 @@ pub enum MarkupKind {
 pub struct CodeActionResult {
     #[serde(default)]
     pub result: Vec<CodeAction>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct NavigateResult {
+    pub success: bool,
+    pub buffer_name: String,
+    pub line: String,
 }
 
 /// A symbol kind.
@@ -2617,6 +2630,52 @@ where
             Err(e) => {
                 debug!("Failed to apply text edits: {}", e);
                 Err(NeovimError::Api(format!("Failed to apply text edits: {e}")))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn navigate(
+        &self,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<NavigateResult, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/navigate.lua"),
+                vec![Value::from(
+                    serde_json::to_string(&TextDocumentPositionParams {
+                        text_document,
+                        position,
+                    })
+                    .unwrap(),
+                )],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<NavigateResult>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!("Failed to parse navigate result: {}", e);
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse navigate result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to navigate: {}", e);
+                Err(NeovimError::Api(format!("Failed to navigate: {e}")))
             }
         }
     }

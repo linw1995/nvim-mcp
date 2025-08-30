@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euxo pipefail
 
+export RUST_LOG=${RUST_LOG-debug}
 export RUSTFLAGS="-Cinstrument-coverage"
 export CARGO_TARGET_DIR="./target/coverage"
 export LLVM_PROFILE_FILE="${CARGO_TARGET_DIR}/data/nvim-mcp-%p-%m.profraw"
