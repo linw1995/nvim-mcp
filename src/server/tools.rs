@@ -1042,7 +1042,7 @@ impl NeovimMcpServer {
     }
 
     #[tool(
-        description = "Get the current cursor position: buffer name, and zero-based row/col index"
+        description = "Get the current cursor position: buffer id, buffer name, window id, and zero-based row/col index"
     )]
     #[instrument(skip(self))]
     pub async fn cursor_position(

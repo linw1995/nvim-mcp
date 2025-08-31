@@ -17,6 +17,12 @@ All notable changes to this project will be documented in this file.
   and active connections with their IDs and targets. This provides better
   visibility into the server state for debugging and operational awareness
 
+### Improved
+
+- **Enhanced Cursor Position Tool**: Extended cursor position tool to include
+  buffer ID and window ID in addition to existing buffer name and coordinates,
+  providing more comprehensive cursor context information
+
 ## [v0.6.0] - 2025-08-30
 
 ### Fixed

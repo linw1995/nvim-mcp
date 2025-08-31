@@ -1129,8 +1129,16 @@ async fn test_cursor_position_tool() -> Result<(), Box<dyn std::error::Error>> {
 
             // Verify required fields are present
             assert!(
-                cursor_data["bufname"].is_string(),
+                cursor_data["buffer_name"].is_string(),
                 "Should have bufname field"
+            );
+            assert!(
+                cursor_data["buffer_id"].is_number(),
+                "Should have buffer_id field"
+            );
+            assert!(
+                cursor_data["window_id"].is_number(),
+                "Should have window_id field"
             );
             assert!(cursor_data["row"].is_number(), "Should have row field");
             assert!(cursor_data["col"].is_number(), "Should have col field");
