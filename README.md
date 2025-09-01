@@ -48,12 +48,36 @@ cargo install --path .
 }
 -->
 
+### Diagnostic Analysis and Code Fixes
+
 See how the nvim-mcp server helps fix workspace diagnostics
 in real-time using AI assistance and LSP integration.
 (From [#10](https://github.com/linw1995/nvim-mcp/discussions/10))
 
 <video
   src="https://github.com/user-attachments/assets/6a9b0d84-db28-4896-a843-3798e70c8ba8"
+  style="max-height:640px; min-height: 200px">
+</video>
+
+### LSP Hover Translation
+
+Seamlessly translate LSP hover information into your native language
+without breaking your development workflow.
+(From [#85](https://github.com/linw1995/nvim-mcp/discussions/85))
+
+<video
+  src="https://github.com/user-attachments/assets/ad8b7e9e-b677-4606-b7c8-5cf6b4f0ab74"
+  style="max-height:640px; min-height: 200px">
+</video>
+
+### Smart Context Retrieval
+
+Efficiently retrieve related code context for symbols under the cursor
+through LSP integration, eliminating the need for manual searching.
+(From [#86](https://github.com/linw1995/nvim-mcp/discussions/86))
+
+<video
+  src="https://github.com/user-attachments/assets/4c991b37-5bda-43d4-b81b-bea2ae9daaf5"
   style="max-height:640px; min-height: 200px">
 </video>
 
