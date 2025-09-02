@@ -1,0 +1,40 @@
+name: "Setup Nix Environment"
+description: ""
+runs:
+  using: composite
+  steps:
+    - uses: nixbuild/nix-quick-install-action@v33
+      with:
+        nix_conf: |
+          keep-env-derivations = true
+          keep-outputs = true
+    - name: Restore and save Nix store
+      uses: nix-community/cache-nix-action@v6
+      with:
+        primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+        restore-prefixes-first-match: nix-${{ runner.os }}-
+        gc-max-store-size-linux: 15G
+
+    - name: Cache pre-commit hooks
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit|${{ hashFiles('.pre-commit-config.yaml') }}
+
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Setup nix develop env
+      shell: bash
+      run: |
+        echo 'use flake' >.envrc
+    - uses: HatsuneMiku3939/direnv-action@v1
+    # and avoid develop env being gc
