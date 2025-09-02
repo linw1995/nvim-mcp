@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/workflows/setup_nix.yaml
+      - uses: ./.github/actions/setup-nix
 
       - name: Run pre-commit hooks on all files
         run: pre-commit run --all-files
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/workflows/setup_nix.yaml
+      - uses: ./.github/actions/setup-nix
 
       - name: Build nix package
         run: nix build --profile default
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/workflows/setup_nix.yaml
+      - uses: ./.github/actions/setup-nix
 
       - name: Run integration tests with coverage
         run: run-cov -- --show-output
