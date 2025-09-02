@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-The server provides 26 MCP tools for interacting with Neovim:
+The server provides 29 MCP tools for interacting with Neovim:
 
 ## Connection Management
 
@@ -138,6 +138,30 @@ establishment phase:
   - Returns: Array of TextEdit objects or success confirmation if auto-applied
   - Notes: Organizes and sorts imports with auto-apply enabled by default
 
+- **`lsp_call_hierarchy_prepare`**: Prepare call hierarchy for a symbol at a
+  specific position
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `lsp_client_name` (string), `line` (number), `character` (number)
+    (all positions are 0-indexed)
+  - Returns: Array of CallHierarchyItem objects or null if no call hierarchy
+    available
+  - Notes: First step in call hierarchy workflow; prepares symbol for
+    incoming/outgoing calls analysis
+
+- **`lsp_call_hierarchy_incoming_calls`**: Get incoming calls for a call
+  hierarchy item
+  - Parameters: `connection_id` (string), `lsp_client_name` (string),
+    `item` (CallHierarchyItem) - Call hierarchy item from prepare step
+  - Returns: Array of CallHierarchyIncomingCall objects showing callers
+  - Notes: Shows all locations where the symbol is called from
+
+- **`lsp_call_hierarchy_outgoing_calls`**: Get outgoing calls for a call
+  hierarchy item
+  - Parameters: `connection_id` (string), `lsp_client_name` (string),
+    `item` (CallHierarchyItem) - Call hierarchy item from prepare step
+  - Returns: Array of CallHierarchyOutgoingCall objects showing callees
+  - Notes: Shows all symbols called by the selected symbol
+
 ## Universal Document Identifier
 
 The `document` parameter in the universal LSP tools accepts a `DocumentIdentifier`
@@ -188,3 +212,27 @@ This enables AI assistants to perform complete code refactoring, quick fixes,
 and other LSP-powered transformations. The implementation uses Neovim's native
 `vim.lsp.util.apply_workspace_edit()` function with proper position encoding
 handling, ensuring reliable and accurate file modifications.
+
+## Complete LSP Call Hierarchy Workflow
+
+The server supports full LSP call hierarchy navigation:
+
+1. **Prepare Call Hierarchy**: Use `lsp_call_hierarchy_prepare` to get call
+   hierarchy items at a specific position
+2. **Get Incoming Calls**: Use `lsp_call_hierarchy_incoming_calls` to find all
+   locations that call the selected symbol
+3. **Get Outgoing Calls**: Use `lsp_call_hierarchy_outgoing_calls` to find all
+   symbols called by the selected symbol
+
+**Example Workflow**:
+
+```text
+1. lsp_call_hierarchy_prepare → Get CallHierarchyItem at symbol position
+2. lsp_call_hierarchy_incoming_calls → Find all callers of the symbol
+3. lsp_call_hierarchy_outgoing_calls → Find all symbols called by the symbol
+```
+
+This enables comprehensive call hierarchy analysis for understanding code
+relationships, dependency tracking, and navigation through function call chains.
+Supports languages with LSP servers that implement call hierarchy capabilities
+(LSP 3.16.0+).
