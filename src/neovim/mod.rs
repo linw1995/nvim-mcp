@@ -6,8 +6,8 @@ mod error;
 pub mod integration_tests;
 
 pub use client::{
-    CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient, NeovimClientTrait, Position,
-    PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
+    CallHierarchyItem, CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient,
+    NeovimClientTrait, Position, PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
 };
 
 pub use error::NeovimError;
