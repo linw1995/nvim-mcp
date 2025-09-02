@@ -18,6 +18,13 @@ All notable changes to this project will be documented in this file.
   These tools provide full call hierarchy navigation capabilities including
   preparing call hierarchy items at specific positions, finding incoming
   callers, and discovering outgoing calls with complete range information
+- **LSP Type Hierarchy Support**: Added comprehensive type hierarchy support
+  with three new LSP tools: `lsp_type_hierarchy_prepare`,
+  `lsp_type_hierarchy_supertypes`, and `lsp_type_hierarchy_subtypes`.
+  These tools provide full type hierarchy navigation capabilities including
+  preparing type hierarchy items at specific positions, finding supertypes
+  (parent types/interfaces), and discovering subtypes (implementations/derived types)
+  with complete range and symbol information
 - **Dynamic Connection Status in Server Info**: Enhanced server information to
   include real-time connection status display showing current connection mode
   and active connections with their IDs and targets. This provides better

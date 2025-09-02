@@ -1507,3 +1507,188 @@ async fn test_lsp_call_hierarchy_outgoing_calls() -> Result<(), Box<dyn std::err
     info!("Call hierarchy outgoing calls test completed successfully");
     Ok(())
 }
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_type_hierarchy_prepare() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_type_hierarchy_prepare");
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("type_hierarchy.go").to_str().unwrap()
+    );
+
+    // Test type hierarchy prepare - tool should exist and handle the request
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "buffer_id": 0
+        }),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert(
+        "line".to_string(),
+        Value::Number(serde_json::Number::from(11)),
+    ); // Shape interface line
+    args.insert(
+        "character".to_string(),
+        Value::Number(serde_json::Number::from(10)),
+    ); // inside interface name
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_type_hierarchy_prepare".into(),
+            arguments: Some(args),
+        })
+        .await;
+
+    info!("Type hierarchy prepare result: {:?}", result);
+
+    // The tool should exist and execute (even if LSP is not available, it should not panic)
+    // It may return an error about LSP not being available, but the tool itself should work
+    match result {
+        Ok(tool_result) => {
+            info!("Tool executed successfully: {:?}", tool_result);
+            assert!(!tool_result.content.is_empty());
+        }
+        Err(e) => {
+            panic!("Tool failed as expected (LSP may not be ready): {}", e);
+            // Tool failure due to LSP unavailability is acceptable in test environment
+        }
+    }
+
+    service.cancel().await?;
+    info!("Type hierarchy prepare test completed successfully");
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_type_hierarchy_supertypes() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_type_hierarchy_supertypes");
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("type_hierarchy.go").to_str().unwrap()
+    );
+
+    // Create a mock type hierarchy item for testing
+    let mock_hierarchy_item = serde_json::json!({
+        "name": "ColoredShape",
+        "kind": 11, // Interface symbol kind
+        "uri": get_file_uri("type_hierarchy.go"),
+        "range": {
+            "start": {"line": 11, "character": 5},
+            "end": {"line": 11, "character": 17}
+        },
+        "selectionRange": {
+            "start": {"line": 11, "character": 5},
+            "end": {"line": 11, "character": 17}
+        }
+    });
+
+    // Test supertypes tool
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert("item".to_string(), mock_hierarchy_item);
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_type_hierarchy_supertypes".into(),
+            arguments: Some(args),
+        })
+        .await;
+
+    info!("Type hierarchy supertypes result: {:?}", result);
+
+    // The tool should exist and execute (even if LSP is not available, it should not panic)
+    match result {
+        Ok(tool_result) => {
+            info!("Tool executed successfully: {:?}", tool_result);
+            assert!(!tool_result.content.is_empty());
+        }
+        Err(e) => {
+            panic!("Tool failed as expected (LSP may not be ready): {}", e);
+            // Tool failure due to LSP unavailability is acceptable in test environment
+        }
+    }
+
+    service.cancel().await?;
+    info!("Type hierarchy supertypes test completed successfully");
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_type_hierarchy_subtypes() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_type_hierarchy_subtypes");
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("type_hierarchy.go").to_str().unwrap()
+    );
+
+    // Create a mock type hierarchy item for testing
+    let mock_hierarchy_item = serde_json::json!({
+        "name": "Shape",
+        "kind": 11, // Interface symbol kind
+        "uri": get_file_uri("type_hierarchy.go"),
+        "range": {
+            "start": {"line": 5, "character": 5},
+            "end": {"line": 5, "character": 10}
+        },
+        "selectionRange": {
+            "start": {"line": 5, "character": 5},
+            "end": {"line": 5, "character": 10}
+        }
+    });
+
+    // Test subtypes tool
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert("item".to_string(), mock_hierarchy_item);
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_type_hierarchy_subtypes".into(),
+            arguments: Some(args),
+        })
+        .await;
+
+    info!("Type hierarchy subtypes result: {:?}", result);
+
+    // The tool should exist and execute (even if LSP is not available, it should not panic)
+    match result {
+        Ok(tool_result) => {
+            info!("Tool executed successfully: {:?}", tool_result);
+            assert!(!tool_result.content.is_empty());
+        }
+        Err(e) => {
+            panic!("Tool failed as expected (LSP may not be ready): {}", e);
+            // Tool failure due to LSP unavailability is acceptable in test environment
+        }
+    }
+
+    service.cancel().await?;
+    info!("Type hierarchy subtypes test completed successfully");
+    Ok(())
+}

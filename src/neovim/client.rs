@@ -231,6 +231,28 @@ pub trait NeovimClientTrait: Sync {
         client_name: &str,
         item: CallHierarchyItem,
     ) -> Result<Option<Vec<CallHierarchyOutgoingCall>>, NeovimError>;
+
+    /// Prepare type hierarchy for a symbol at a specific position
+    async fn lsp_type_hierarchy_prepare(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, NeovimError>;
+
+    /// Get supertypes for a type hierarchy item
+    async fn lsp_type_hierarchy_supertypes(
+        &self,
+        client_name: &str,
+        item: TypeHierarchyItem,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, NeovimError>;
+
+    /// Get subtypes for a type hierarchy item
+    async fn lsp_type_hierarchy_subtypes(
+        &self,
+        client_name: &str,
+        item: TypeHierarchyItem,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, NeovimError>;
 }
 
 /// Notification tracking structure
@@ -479,7 +501,7 @@ pub struct BufferInfo {
 
 /// Text documents are identified using a URI.
 /// On the protocol level, URIs are passed as strings.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct TextDocumentIdentifier {
     /// The text document's URI.
     uri: String,
@@ -1310,6 +1332,71 @@ pub struct CallHierarchyOutgoingCall {
 #[serde(rename_all = "camelCase")]
 pub struct CallHierarchyOutgoingCallsParams {
     pub item: CallHierarchyItem,
+}
+
+/// Represents a type hierarchy item.
+///
+/// @since 3.17.0
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeHierarchyItem {
+    /// The name of this symbol.
+    pub name: String,
+    /// The kind of this symbol.
+    pub kind: SymbolKind,
+    /// Tags for this symbol.
+    ///
+    /// @since 3.16.0
+    pub tags: Option<Vec<SymbolTag>>,
+    /// More detail for this symbol, e.g the signature of a function.
+    pub detail: Option<String>,
+    /// The resource identifier of this symbol.
+    pub uri: String,
+    /// The range enclosing this symbol not including leading/trailing whitespace
+    /// but everything else like comments. This information is typically used to
+    /// determine if the clients cursor is inside the symbol to reveal in the
+    /// symbol in the UI.
+    pub range: Range,
+    /// The range that should be selected and revealed when this symbol is being
+    /// picked, e.g the name of a function. Must be contained by the `range`.
+    pub selection_range: Range,
+    /// A data entry field that is preserved between a type hierarchy prepare and a
+    /// supertypes or subtypes request. It could also be used to identify the
+    /// type hierarchy in the server, helping improve the performance on
+    /// resolving supertypes and subtypes.
+    pub data: Option<serde_json::Value>,
+}
+
+impl_fromstr_serde_json!(TypeHierarchyItem);
+
+/// Parameters for the type hierarchy prepare request.
+///
+/// @since 3.17.0
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeHierarchyPrepareParams {
+    /// The text document.
+    pub text_document: TextDocumentIdentifier,
+    /// The position inside the text document.
+    pub position: Position,
+}
+
+/// Parameters for the supertypes request.
+///
+/// @since 3.17.0
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeHierarchySupertypesParams {
+    pub item: TypeHierarchyItem,
+}
+
+/// Parameters for the subtypes request.
+///
+/// @since 3.17.0
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeHierarchySubtypesParams {
+    pub item: TypeHierarchyItem,
 }
 
 /// Result type for document symbols request
@@ -3053,6 +3140,147 @@ where
                 debug!("Failed to get call hierarchy outgoing calls: {}", e);
                 Err(NeovimError::Api(format!(
                     "Failed to get call hierarchy outgoing calls: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_type_hierarchy_prepare(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_type_hierarchy_prepare.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&TypeHierarchyPrepareParams {
+                            text_document,
+                            position,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<Vec<TypeHierarchyItem>>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!("Failed to parse type hierarchy prepare result: {}", e);
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse type hierarchy prepare result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to prepare type hierarchy: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to prepare type hierarchy: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_type_hierarchy_supertypes(
+        &self,
+        client_name: &str,
+        item: TypeHierarchyItem,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_type_hierarchy_supertypes.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&TypeHierarchySupertypesParams { item }).unwrap(),
+                    ), // params
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<Vec<TypeHierarchyItem>>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!("Failed to parse type hierarchy supertypes result: {}", e);
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse type hierarchy supertypes result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get type hierarchy supertypes: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get type hierarchy supertypes: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_type_hierarchy_subtypes(
+        &self,
+        client_name: &str,
+        item: TypeHierarchyItem,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_type_hierarchy_subtypes.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&TypeHierarchySubtypesParams { item }).unwrap(),
+                    ), // params
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<Vec<TypeHierarchyItem>>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!("Failed to parse type hierarchy subtypes result: {}", e);
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse type hierarchy subtypes result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get type hierarchy subtypes: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get type hierarchy subtypes: {e}"
                 )))
             }
         }
