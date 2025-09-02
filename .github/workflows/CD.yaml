@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/workflows/setup_nix.yml
+      - uses: ./.github/workflows/setup_nix.yaml
 
       - name: Build binary
         run: nix build --profile default
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/workflows/setup_nix.yml
+      - uses: ./.github/workflows/setup_nix.yaml
 
       - name: Bake commit SHA into crate
         run: echo "${GITHUB_SHA}" > .packaged-commit
