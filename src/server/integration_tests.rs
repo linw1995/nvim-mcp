@@ -74,6 +74,25 @@ macro_rules! connect_to_neovim {
     }};
 }
 
+macro_rules! wait_for_lsp_ready {
+    ($service:expr, $connection_id:expr, $lsp_client:expr) => {{
+        // Wait for LSP client (gopls) to be ready
+        let mut wait_lsp_args = Map::new();
+        wait_lsp_args.insert("connection_id".to_string(), Value::String($connection_id));
+        wait_lsp_args.insert("client_name".to_string(), Value::String($lsp_client));
+        wait_lsp_args.insert("timeout_ms".to_string(), Value::Number(30000.into()));
+
+        $service
+            .call_tool(CallToolRequestParam {
+                name: "wait_for_lsp_ready".into(),
+                arguments: Some(wait_lsp_args),
+            })
+            .await?;
+
+        info!("LSP client ready");
+    }};
+}
+
 // Helper function to extract connection_id from connect response
 fn extract_connection_id(
     result: &rmcp::model::CallToolResult,
@@ -843,26 +862,7 @@ async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::
         get_testdata_path("main.go").to_str().unwrap()
     );
 
-    // Wait for LSP client (gopls) to be ready
-    let mut wait_lsp_args = Map::new();
-    wait_lsp_args.insert(
-        "connection_id".to_string(),
-        Value::String(connection_id.clone()),
-    );
-    wait_lsp_args.insert(
-        "client_name".to_string(),
-        Value::String("gopls".to_string()),
-    );
-    wait_lsp_args.insert("timeout_ms".to_string(), Value::Number(5000.into()));
-
-    service
-        .call_tool(CallToolRequestParam {
-            name: "wait_for_lsp_ready".into(),
-            arguments: Some(wait_lsp_args),
-        })
-        .await?;
-
-    info!("LSP client ready");
+    wait_for_lsp_ready!(service, connection_id.clone(), "gopls".to_string());
 
     // Test lsp_organize_imports with apply_edits=true
     let mut args = Map::new();
@@ -1332,6 +1332,8 @@ async fn test_lsp_call_hierarchy_prepare() -> Result<(), Box<dyn std::error::Err
         get_testdata_path("call_hierarchy.go").to_str().unwrap()
     );
 
+    wait_for_lsp_ready!(service, connection_id.clone(), "gopls".to_string());
+
     // Test call hierarchy prepare - tool should exist and handle the request
     let mut args = Map::new();
     args.insert(
@@ -1392,6 +1394,8 @@ async fn test_lsp_call_hierarchy_incoming_calls() -> Result<(), Box<dyn std::err
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         get_testdata_path("call_hierarchy.go").to_str().unwrap()
     );
+
+    wait_for_lsp_ready!(service, connection_id.clone(), "gopls".to_string());
 
     // Create a mock call hierarchy item for testing
     let mock_hierarchy_item = serde_json::json!({
@@ -1455,6 +1459,8 @@ async fn test_lsp_call_hierarchy_outgoing_calls() -> Result<(), Box<dyn std::err
         get_testdata_path("call_hierarchy.go").to_str().unwrap()
     );
 
+    wait_for_lsp_ready!(service, connection_id.clone(), "gopls".to_string());
+
     // Create a mock call hierarchy item for testing
     let mock_hierarchy_item = serde_json::json!({
         "name": "caller",
@@ -1517,6 +1523,8 @@ async fn test_lsp_type_hierarchy_prepare() -> Result<(), Box<dyn std::error::Err
         get_testdata_path("type_hierarchy.go").to_str().unwrap()
     );
 
+    wait_for_lsp_ready!(service, connection_id.clone(), "gopls".to_string());
+
     // Test type hierarchy prepare - tool should exist and handle the request
     let mut args = Map::new();
     args.insert(
@@ -1577,6 +1585,8 @@ async fn test_lsp_type_hierarchy_supertypes() -> Result<(), Box<dyn std::error::
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         get_testdata_path("type_hierarchy.go").to_str().unwrap()
     );
+
+    wait_for_lsp_ready!(service, connection_id.clone(), "gopls".to_string());
 
     // Create a mock type hierarchy item for testing
     let mock_hierarchy_item = serde_json::json!({
@@ -1639,6 +1649,8 @@ async fn test_lsp_type_hierarchy_subtypes() -> Result<(), Box<dyn std::error::Er
         get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
         get_testdata_path("type_hierarchy.go").to_str().unwrap()
     );
+
+    wait_for_lsp_ready!(service, connection_id.clone(), "gopls".to_string());
 
     // Create a mock type hierarchy item for testing
     let mock_hierarchy_item = serde_json::json!({
