@@ -1322,3 +1322,188 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_call_hierarchy_prepare() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_call_hierarchy_prepare");
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("call_hierarchy.go").to_str().unwrap()
+    );
+
+    // Test call hierarchy prepare - tool should exist and handle the request
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "buffer_id": 0
+        }),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert(
+        "line".to_string(),
+        Value::Number(serde_json::Number::from(16)),
+    ); // caller function line (0-based)
+    args.insert(
+        "character".to_string(),
+        Value::Number(serde_json::Number::from(5)),
+    ); // inside function name
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_call_hierarchy_prepare".into(),
+            arguments: Some(args),
+        })
+        .await;
+
+    info!("Call hierarchy prepare result: {:?}", result);
+
+    // The tool should exist and execute (even if LSP is not available, it should not panic)
+    // It may return an error about LSP not being available, but the tool itself should work
+    match result {
+        Ok(tool_result) => {
+            info!("Tool executed successfully: {:?}", tool_result);
+            assert!(!tool_result.content.is_empty());
+        }
+        Err(e) => {
+            panic!("Tool failed as expected (LSP may not be ready): {}", e);
+            // Tool failure due to LSP unavailability is acceptable in test environment
+        }
+    }
+
+    service.cancel().await?;
+    info!("Call hierarchy prepare test completed successfully");
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_call_hierarchy_incoming_calls() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_call_hierarchy_incoming_calls");
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("call_hierarchy.go").to_str().unwrap()
+    );
+
+    // Create a mock call hierarchy item for testing
+    let mock_hierarchy_item = serde_json::json!({
+        "name": "helper",
+        "kind": 12, // Function symbol kind
+        "uri": get_file_uri("call_hierarchy.go"),
+        "range": {
+            "start": {"line": 5, "character": 5},
+            "end": {"line": 5, "character": 11}
+        },
+        "selectionRange": {
+            "start": {"line": 5, "character": 5},
+            "end": {"line": 5, "character": 11}
+        }
+    });
+
+    // Test incoming calls tool
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert("item".to_string(), mock_hierarchy_item);
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_call_hierarchy_incoming_calls".into(),
+            arguments: Some(args),
+        })
+        .await;
+
+    info!("Call hierarchy incoming calls result: {:?}", result);
+
+    // The tool should exist and execute (even if LSP is not available, it should not panic)
+    match result {
+        Ok(tool_result) => {
+            info!("Tool executed successfully: {:?}", tool_result);
+            assert!(!tool_result.content.is_empty());
+        }
+        Err(e) => {
+            panic!("Tool failed as expected (LSP may not be ready): {}", e);
+            // Tool failure due to LSP unavailability is acceptable in test environment
+        }
+    }
+
+    service.cancel().await?;
+    info!("Call hierarchy incoming calls test completed successfully");
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_lsp_call_hierarchy_outgoing_calls() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing lsp_call_hierarchy_outgoing_calls");
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("call_hierarchy.go").to_str().unwrap()
+    );
+
+    // Create a mock call hierarchy item for testing
+    let mock_hierarchy_item = serde_json::json!({
+        "name": "caller",
+        "kind": 12, // Function symbol kind
+        "uri": get_file_uri("call_hierarchy.go"),
+        "range": {
+            "start": {"line": 16, "character": 5},
+            "end": {"line": 16, "character": 11}
+        },
+        "selectionRange": {
+            "start": {"line": 16, "character": 5},
+            "end": {"line": 16, "character": 11}
+        }
+    });
+
+    // Test outgoing calls tool
+    let mut args = Map::new();
+    args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    args.insert(
+        "lsp_client_name".to_string(),
+        Value::String("gopls".to_string()),
+    );
+    args.insert("item".to_string(), mock_hierarchy_item);
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "lsp_call_hierarchy_outgoing_calls".into(),
+            arguments: Some(args),
+        })
+        .await;
+
+    info!("Call hierarchy outgoing calls result: {:?}", result);
+
+    // The tool should exist and execute (even if LSP is not available, it should not panic)
+    match result {
+        Ok(tool_result) => {
+            info!("Tool executed successfully: {:?}", tool_result);
+            assert!(!tool_result.content.is_empty());
+        }
+        Err(e) => {
+            panic!("Tool failed as expected (LSP may not be ready): {}", e);
+            // Tool failure due to LSP unavailability is acceptable in test environment
+        }
+    }
+
+    service.cancel().await?;
+    info!("Call hierarchy outgoing calls test completed successfully");
+    Ok(())
+}
