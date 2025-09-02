@@ -1,81 +1,92 @@
 # Neovim MCP
 
-## Guide
+## Complete LSP Code Action Workflow
 
-### Connection Workflow for LLMs
+The server now supports the full LSP code action lifecycle:
 
-#### Automatic Connection (Recommended)
+1. **Get Available Actions**: Use `lsp_code_actions` to retrieve available
+   code actions for a specific range
+2. **Resolve Action**: Use `lsp_resolve_code_action` to resolve any code
+   action that may have incomplete data
+3. **Apply Changes**: Use `lsp_apply_edit` to apply the workspace edit from
+   the resolved code action
 
-When the nvim-mcp server is started with `--connect auto`, connections are
-established automatically:
+**Example Workflow**:
 
-1. **Pre-established Connections**: Server automatically discovers and connects
-   to project-associated Neovim instances
-2. **Connection ID Retrieval**: Use the `nvim-connections://` resource to get
-   available `connection_id`s
-3. **Direct Tool Usage**: Use connection-aware tools immediately with the
-   retrieved `connection_id`s
+```text
+1. lsp_code_actions → Get available actions
+2. lsp_resolve_code_action → Resolve incomplete action data
+3. lsp_apply_edit → Apply the workspace edit to files
+```
 
-#### Manual Connection Workflow
+This enables AI assistants to perform complete code refactoring, quick fixes,
+and other LSP-powered transformations. The implementation uses Neovim's native
+`vim.lsp.util.apply_workspace_edit()` function with proper position encoding
+handling, ensuring reliable and accurate file modifications.
 
-1. **Discovery Phase**: Use `get_targets` to find available Neovim instances
-2. **Connection Phase**: Use `connect` with a target from the discovery results
-3. **Caching Phase**: Store the `connection_id` for reuse across multiple operations
-4. **Work Phase**: Use connection-aware tools with the cached `connection_id`
-5. **Optional Cleanup**: Call `disconnect` only when you're completely done
-   with a session
+## Complete LSP Call Hierarchy Workflow
 
-### Connection Caching and Management
+The server supports full LSP call hierarchy navigation:
 
-- **Cache connections**: Store `connection_id` values and reuse them across operations
-- **Connection IDs are deterministic**: Same target always produces same ID
-- **Persistent connections**: Connections remain active until explicitly disconnected
-- **Parallel operations**: Each connection operates independently
-- **Connection replacement**: Connecting to existing target replaces previous connection
-- **Resource isolation**: Each connection has separate diagnostic resources
-- **Automatic cleanup**: Server handles connection cleanup on process termination
+1. **Prepare Call Hierarchy**: Use `lsp_call_hierarchy_prepare` to get call
+   hierarchy items at a specific position
+2. **Get Incoming Calls**: Use `lsp_call_hierarchy_incoming_calls` to find all
+   locations that call the selected symbol
+3. **Get Outgoing Calls**: Use `lsp_call_hierarchy_outgoing_calls` to find all
+   symbols called by the selected symbol
 
-### Tool Usage Patterns
+**Example Workflow**:
 
-#### File Analysis Workflow
+```text
+1. lsp_call_hierarchy_prepare → Get CallHierarchyItem at symbol position
+2. lsp_call_hierarchy_incoming_calls → Find all callers of the symbol
+3. lsp_call_hierarchy_outgoing_calls → Find all symbols called by the symbol
+```
+
+This enables comprehensive call hierarchy analysis for understanding code
+relationships, dependency tracking, and navigation through function call chains.
+Supports languages with LSP servers that implement call hierarchy capabilities
+(LSP 3.16.0+).
+
+## Complete LSP Type Hierarchy Workflow
+
+The server supports full LSP type hierarchy navigation:
+
+1. **Prepare Type Hierarchy**: Use `lsp_type_hierarchy_prepare` to get type
+   hierarchy items at a specific position
+2. **Get Supertypes**: Use `lsp_type_hierarchy_supertypes` to find all parent
+   types, interfaces, or base classes that the selected symbol extends or implements
+3. **Get Subtypes**: Use `lsp_type_hierarchy_subtypes` to find all derived
+   types, implementations, or subclasses of the selected symbol
+
+**Example Workflow**:
+
+```text
+1. lsp_type_hierarchy_prepare → Get TypeHierarchyItem at symbol position
+2. lsp_type_hierarchy_supertypes → Find all parent types/interfaces
+3. lsp_type_hierarchy_subtypes → Find all implementations/derived types
+```
+
+This enables comprehensive type hierarchy analysis for understanding inheritance
+relationships, polymorphism tracking, and navigation through type hierarchies.
+Supports languages with LSP servers that implement type hierarchy capabilities
+(LSP 3.17.0+).
+
+## File Analysis Workflow
 
 1. get_targets → connect → list_buffers (cache connection_id)
 2. buffer_diagnostics (for each relevant buffer, reuse connection_id)
 3. Read nvim-diagnostics://{connection_id}/workspace resource
 4. Keep connection active for future operations
 
-#### Complete LSP Code Action Workflow
-
-1. get_targets → connect → list_buffers (cache connection_id)
-2. lsp_clients (to find available language servers, reuse connection_id)
-3. lsp_code_actions (with DocumentIdentifier and LSP client, reuse connection_id)
-4. lsp_resolve_code_action (resolve any code action with incomplete data, reuse connection_id)
-5. lsp_apply_edit (apply the workspace edit from resolved code action, reuse connection_id)
-6. Keep connection active for additional operations
-
-**Enhanced Workflow Benefits:**
-
-- **Complete automation**: No manual exec_lua required for applying changes
-- **Robust resolution**: Handles code actions with incomplete edit or command data
-- **Native integration**: Uses Neovim's built-in `vim.lsp.util.apply_workspace_edit()`
-  for reliable file modifications with proper position encoding handling
-- **Error handling**: Proper validation and error reporting throughout the process
-
-### Error Handling Guidelines
-
-- **Connection errors**: Retry with different target from get_targets
-- **Invalid connection_id**: Re-establish connection using connect/connect_tcp
-- **Buffer not found**: Use list_buffers to get current buffer list
-- **LSP errors**: Check lsp_clients for available language servers
-
-### Resource Reading Strategy
+## Resource Reading Strategy
 
 - **Use workspace diagnostics**: For project-wide error analysis
 - **Use buffer diagnostics**: For file-specific issue investigation
 - **Monitor connections**: Use nvim-connections:// to track active instances
 - **Parse diagnostic severity**: 1=Error, 2=Warning, 3=Information, 4=Hint
 
-### Safe Code Execution
+## Safe Code Execution
 
 - **Read-only operations**: Prefer `vim.inspect()`, `vim.fn.getline()`, `vim.api.nvim_buf_get_lines()`
 - **State queries**: Use `vim.fn.getcwd()`, `vim.bo.filetype`, `vim.api.nvim_get_current_buf()`
@@ -83,16 +94,7 @@ established automatically:
   write operations
 - **Error handling**: Wrap Lua code in `pcall()` for safe execution
 
-### Integration Workflows
-
-#### Automatic Connection Workflow
-
-1. Start server with `nvim-mcp --connect auto`
-2. Read nvim-connections:// resource to get available connection IDs
-3. Use connection IDs directly with connection-aware tools
-4. Server maintains all connections automatically
-
-#### Diagnostic Analysis
+## Diagnostic Analysis
 
 1. Connect to Neovim instance (cache connection_id) or use auto-connected IDs
 2. Read workspace diagnostics resource
@@ -101,20 +103,7 @@ established automatically:
 5. Provide structured error report
 6. Keep connection active for follow-up analysis
 
-#### Code Understanding
-
-1. Connect to Neovim instance (cache connection_id)
-2. Use exec_lua to get buffer content and metadata (reuse connection_id)
-3. Check LSP clients for language-specific information (reuse connection_id)
-4. Use lsp_code_actions with DocumentIdentifier for interesting ranges (reuse connection_id)
-5. Use lsp_hover with DocumentIdentifier for detailed symbol information (reuse connection_id)
-6. Use lsp_document_symbols with DocumentIdentifier to understand file
-   structure (reuse connection_id)
-7. Use lsp_workspace_symbols to find related code across project (reuse connection_id)
-8. Combine information for comprehensive analysis
-9. Maintain connection for iterative code exploration
-
-#### Symbol Navigation Workflow
+## Symbol Navigation Workflow
 
 1. Connect to Neovim instance (cache connection_id)
 2. Get available LSP clients (reuse connection_id)
@@ -123,7 +112,7 @@ established automatically:
 5. Navigate to symbol locations using returned position information
 6. Keep connection active for continued navigation
 
-#### Navigation Workflow
+## Navigation Workflow
 
 1. Connect to Neovim instance (cache connection_id)
 2. Use navigate tool to go to a specific position in current buffer or open a file
@@ -133,7 +122,7 @@ established automatically:
 5. Receive navigation result with success status, buffer name, and current line content
 6. Keep connection active for continued navigation operations
 
-#### Cursor Position Workflow
+## Cursor Position Workflow
 
 1. Connect to Neovim instance (cache connection_id)
 2. Use cursor_position tool to get current cursor location with zero-based coordinates
@@ -141,7 +130,7 @@ established automatically:
 4. Use position information for targeted operations like hover, references, or definitions
 5. Keep connection active for continued cursor-based operations
 
-#### Multi-Instance Management
+## Multi-Instance Management
 
 1. Use get_targets to find all available instances
 2. Connect to each target (generates separate connection_ids, cache all IDs)
