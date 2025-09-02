@@ -13,8 +13,8 @@ use tracing::instrument;
 use super::core::{NeovimMcpServer, find_get_all_targets};
 use super::lua_tools;
 use crate::neovim::{
-    CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient, NeovimClientTrait, Position,
-    PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
+    CallHierarchyItem, CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient,
+    NeovimClientTrait, Position, PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
 };
 
 /// Connect to Neovim instance via unix socket or TCP
@@ -360,6 +360,48 @@ pub struct NavigateParams {
     pub line: u64,
     /// Symbol position, character number starts from 0
     pub character: u64,
+}
+
+/// Call hierarchy prepare parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CallHierarchyPrepareParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Symbol position, line number starts from 0
+    pub line: u64,
+    /// Symbol position, character number starts from 0
+    pub character: u64,
+}
+
+/// Call hierarchy incoming calls parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CallHierarchyIncomingCallsParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Call hierarchy item to get incoming calls for
+    #[serde(deserialize_with = "string_or_struct")]
+    pub item: CallHierarchyItem,
+}
+
+/// Call hierarchy outgoing calls parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CallHierarchyOutgoingCallsParams {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Lsp client name
+    pub lsp_client_name: String,
+    /// Call hierarchy item to get outgoing calls for
+    #[serde(deserialize_with = "string_or_struct")]
+    pub item: CallHierarchyItem,
 }
 
 macro_rules! include_files {
@@ -1080,6 +1122,60 @@ impl NeovimMcpServer {
         let client = self.get_connection(&connection_id)?;
         let position = Position { line, character };
         let result = client.navigate(document, position).await?;
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
+    }
+
+    #[tool(description = "Prepare call hierarchy for a symbol at a specific position")]
+    #[instrument(skip(self))]
+    pub async fn lsp_call_hierarchy_prepare(
+        &self,
+        Parameters(CallHierarchyPrepareParams {
+            connection_id,
+            document,
+            lsp_client_name,
+            line,
+            character,
+        }): Parameters<CallHierarchyPrepareParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let position = Position { line, character };
+        let result = client
+            .lsp_call_hierarchy_prepare(&lsp_client_name, document, position)
+            .await?;
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
+    }
+
+    #[tool(description = "Get incoming calls for a call hierarchy item")]
+    #[instrument(skip(self))]
+    pub async fn lsp_call_hierarchy_incoming_calls(
+        &self,
+        Parameters(CallHierarchyIncomingCallsParams {
+            connection_id,
+            lsp_client_name,
+            item,
+        }): Parameters<CallHierarchyIncomingCallsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let result = client
+            .lsp_call_hierarchy_incoming_calls(&lsp_client_name, item)
+            .await?;
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
+    }
+
+    #[tool(description = "Get outgoing calls for a call hierarchy item")]
+    #[instrument(skip(self))]
+    pub async fn lsp_call_hierarchy_outgoing_calls(
+        &self,
+        Parameters(CallHierarchyOutgoingCallsParams {
+            connection_id,
+            lsp_client_name,
+            item,
+        }): Parameters<CallHierarchyOutgoingCallsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let result = client
+            .lsp_call_hierarchy_outgoing_calls(&lsp_client_name, item)
+            .await?;
         Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 }

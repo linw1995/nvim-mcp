@@ -209,6 +209,28 @@ pub trait NeovimClientTrait: Sync {
         document: DocumentIdentifier,
         position: Position,
     ) -> Result<NavigateResult, NeovimError>;
+
+    /// Prepare call hierarchy for a symbol at a specific position
+    async fn lsp_call_hierarchy_prepare(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<Vec<CallHierarchyItem>>, NeovimError>;
+
+    /// Get incoming calls for a call hierarchy item
+    async fn lsp_call_hierarchy_incoming_calls(
+        &self,
+        client_name: &str,
+        item: CallHierarchyItem,
+    ) -> Result<Option<Vec<CallHierarchyIncomingCall>>, NeovimError>;
+
+    /// Get outgoing calls for a call hierarchy item
+    async fn lsp_call_hierarchy_outgoing_calls(
+        &self,
+        client_name: &str,
+        item: CallHierarchyItem,
+    ) -> Result<Option<Vec<CallHierarchyOutgoingCall>>, NeovimError>;
 }
 
 /// Notification tracking structure
@@ -985,7 +1007,7 @@ pub struct NavigateResult {
 }
 
 /// A symbol kind.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(into = "u8", from = "u8")]
 pub enum SymbolKind {
     File = 1,
@@ -1059,7 +1081,7 @@ impl From<u8> for SymbolKind {
 /// Symbol tags are extra annotations that tweak the rendering of a symbol.
 ///
 /// @since 3.16
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 #[serde(into = "u8", from = "u8")]
 pub enum SymbolTag {
     /// Render a symbol as obsolete, usually using a strike-out.
@@ -1198,6 +1220,96 @@ pub struct WorkspaceSymbolParams {
     /// A query string to filter symbols by. Clients may send an empty
     /// string here to request all symbols.
     pub query: String,
+}
+
+/// Represents a symbol in the call hierarchy.
+///
+/// @since 3.16.0
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyItem {
+    /// The name of this symbol.
+    pub name: String,
+    /// The kind of this symbol.
+    pub kind: SymbolKind,
+    /// Tags for this symbol.
+    ///
+    /// @since 3.16.0
+    pub tags: Option<Vec<SymbolTag>>,
+    /// More detail for this symbol, e.g the signature of a function.
+    pub detail: Option<String>,
+    /// The resource identifier of this symbol.
+    pub uri: String,
+    /// The range enclosing this symbol not including leading/trailing whitespace
+    /// but everything else like comments. This information is typically used to
+    /// determine if the clients cursor is inside the symbol to reveal in the
+    /// symbol in the UI.
+    pub range: Range,
+    /// The range that should be selected and revealed when this symbol is being
+    /// picked, e.g the name of a function. Must be contained by the `range`.
+    pub selection_range: Range,
+    /// A data entry field that is preserved on a call hierarchy item between
+    /// a call hierarchy prepare and incoming calls or outgoing calls requests.
+    pub data: Option<serde_json::Value>,
+}
+
+impl_fromstr_serde_json!(CallHierarchyItem);
+
+/// Parameters for the call hierarchy prepare request.
+///
+/// @since 3.16.0
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyPrepareParams {
+    /// The text document.
+    pub text_document: TextDocumentIdentifier,
+    /// The position inside the text document.
+    pub position: Position,
+}
+
+/// Represents an incoming call, e.g. a caller of a method or constructor.
+///
+/// @since 3.16.0
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyIncomingCall {
+    /// The item that makes the call.
+    pub from: CallHierarchyItem,
+    /// The ranges at which the calls appear. This is relative to the caller
+    /// denoted by `from`.
+    pub from_ranges: Vec<Range>,
+}
+
+/// Parameters for the incoming calls request.
+///
+/// @since 3.16.0
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyIncomingCallsParams {
+    pub item: CallHierarchyItem,
+}
+
+/// Represents an outgoing call, e.g. calling a getter from a method or
+/// a method from a constructor etc.
+///
+/// @since 3.16.0
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyOutgoingCall {
+    /// The item that is called.
+    pub to: CallHierarchyItem,
+    /// The range at which this item is called. This is the range relative to
+    /// the caller, e.g the item passed to `callHierarchy/outgoingCalls` request.
+    pub from_ranges: Vec<Range>,
+}
+
+/// Parameters for the outgoing calls request.
+///
+/// @since 3.16.0
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyOutgoingCallsParams {
+    pub item: CallHierarchyItem,
 }
 
 /// Result type for document symbols request
@@ -2791,6 +2903,159 @@ where
 
         // After notification, try to get diagnostics again
         self.get_diagnostics(buffer_id).await
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_call_hierarchy_prepare(
+        &self,
+        client_name: &str,
+        document: DocumentIdentifier,
+        position: Position,
+    ) -> Result<Option<Vec<CallHierarchyItem>>, NeovimError> {
+        let text_document = self.resolve_text_document_identifier(&document).await?;
+
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_call_hierarchy_prepare.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&CallHierarchyPrepareParams {
+                            text_document,
+                            position,
+                        })
+                        .unwrap(),
+                    ), // params
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<Option<Vec<CallHierarchyItem>>>>(
+                    result.as_str().unwrap(),
+                ) {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!("Failed to parse call hierarchy prepare result: {}", e);
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse call hierarchy prepare result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to prepare call hierarchy: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to prepare call hierarchy: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_call_hierarchy_incoming_calls(
+        &self,
+        client_name: &str,
+        item: CallHierarchyItem,
+    ) -> Result<Option<Vec<CallHierarchyIncomingCall>>, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_call_hierarchy_incoming_calls.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&CallHierarchyIncomingCallsParams { item }).unwrap(),
+                    ), // params
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<
+                    NvimExecuteLuaResult<Option<Vec<CallHierarchyIncomingCall>>>,
+                >(result.as_str().unwrap())
+                {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!(
+                            "Failed to parse call hierarchy incoming calls result: {}",
+                            e
+                        );
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse call hierarchy incoming calls result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get call hierarchy incoming calls: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get call hierarchy incoming calls: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn lsp_call_hierarchy_outgoing_calls(
+        &self,
+        client_name: &str,
+        item: CallHierarchyItem,
+    ) -> Result<Option<Vec<CallHierarchyOutgoingCall>>, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/lsp_call_hierarchy_outgoing_calls.lua"),
+                vec![
+                    Value::from(client_name), // client_name
+                    Value::from(
+                        serde_json::to_string(&CallHierarchyOutgoingCallsParams { item }).unwrap(),
+                    ), // params
+                    Value::from(self.config.lsp_timeout_ms), // timeout_ms
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<
+                    NvimExecuteLuaResult<Option<Vec<CallHierarchyOutgoingCall>>>,
+                >(result.as_str().unwrap())
+                {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!(
+                            "Failed to parse call hierarchy outgoing calls result: {}",
+                            e
+                        );
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse call hierarchy outgoing calls result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get call hierarchy outgoing calls: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get call hierarchy outgoing calls: {e}"
+                )))
+            }
+        }
     }
 }
 

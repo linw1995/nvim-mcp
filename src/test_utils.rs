@@ -73,6 +73,17 @@ pub fn get_testdata_path(filename: &str) -> PathBuf {
     path
 }
 
+/// get file URI for test data file
+pub fn get_file_uri(filename: &str) -> String {
+    format!(
+        "file://{}",
+        std::fs::canonicalize(get_testdata_path(filename))
+            .unwrap()
+            .to_str()
+            .unwrap()
+    )
+}
+
 /// Get test data content
 pub fn get_testdata_content(filename: &str) -> String {
     std::fs::read_to_string(get_testdata_path(filename)).expect("Failed to read test data file")

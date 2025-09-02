@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.
 
 ### New Features
 
+- **LSP Call Hierarchy Support**: Added comprehensive call hierarchy support
+  with three new LSP tools: `lsp_call_hierarchy_prepare`,
+  `lsp_call_hierarchy_incoming_calls`, and `lsp_call_hierarchy_outgoing_calls`.
+  These tools provide full call hierarchy navigation capabilities including
+  preparing call hierarchy items at specific positions, finding incoming
+  callers, and discovering outgoing calls with complete range information
 - **Dynamic Connection Status in Server Info**: Enhanced server information to
   include real-time connection status display showing current connection mode
   and active connections with their IDs and targets. This provides better
