@@ -455,6 +455,245 @@ async fn test_list_buffers_tool() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 #[traced_test]
+async fn test_read_buffer_tool() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Starting MCP client to test read buffer tool");
+
+    // Start Neovim instance and use auto-connect service
+    let (service, connection_id, _guard) = setup_connected_service!();
+
+    // First, let's add some content to the buffer
+    let mut exec_lua_args = Map::new();
+    exec_lua_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    exec_lua_args.insert(
+        "code".to_string(),
+        Value::String(
+            r#"
+            vim.api.nvim_buf_set_lines(0, 0, -1, false, {
+                "Hello, World!",
+                "This is line 2",
+                "This is line 3",
+                "End of buffer"
+            })
+        "#
+            .to_string(),
+        ),
+    );
+
+    service
+        .call_tool(CallToolRequestParam {
+            name: "exec_lua".into(),
+            arguments: Some(exec_lua_args),
+        })
+        .await?;
+
+    // Test reading entire buffer
+    let mut read_args = Map::new();
+    read_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_args.insert(
+        "document".to_string(),
+        Value::String(r#"{"buffer_id": 0}"#.to_string()),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_args),
+        })
+        .await?;
+
+    info!("Read buffer result: {:#?}", result);
+    assert!(!result.content.is_empty());
+
+    // Verify the response contains the expected lines
+    if let Some(content) = result.content.first() {
+        if let Some(text) = content.as_text() {
+            let text_content = &text.text;
+            assert!(text_content.contains("Hello, World!"));
+            assert!(text_content.contains("This is line 2"));
+            assert!(text_content.contains("This is line 3"));
+            assert!(text_content.contains("End of buffer"));
+        } else {
+            panic!("Expected text content in read buffer result");
+        }
+    } else {
+        panic!("No content in read buffer result");
+    }
+
+    // Test reading specific line range
+    let mut read_range_args = Map::new();
+    read_range_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_range_args.insert(
+        "document".to_string(),
+        Value::String(r#"{"buffer_id": 0}"#.to_string()),
+    );
+    read_range_args.insert("start".to_string(), Value::Number(1.into()));
+    read_range_args.insert("end".to_string(), Value::Number(3.into()));
+
+    let range_result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_range_args),
+        })
+        .await?;
+
+    info!("Read buffer range result: {:#?}", range_result);
+    assert!(!range_result.content.is_empty());
+
+    // Verify the range response contains only lines 1-2 (0-indexed)
+    if let Some(content) = range_result.content.first() {
+        if let Some(text) = content.as_text() {
+            let text_content = &text.text;
+            assert!(!text_content.contains("Hello, World!")); // Line 0, should not be included
+            assert!(text_content.contains("This is line 2")); // Line 1, should be included
+            assert!(text_content.contains("This is line 3")); // Line 2, should be included
+            assert!(!text_content.contains("End of buffer")); // Line 3, should not be included
+        } else {
+            panic!("Expected text content in read buffer range result");
+        }
+    } else {
+        panic!("No content in read buffer range result");
+    }
+
+    service.cancel().await?;
+    info!("Read buffer tool test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_read_buffer_invalid_buffer() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing read buffer tool with invalid buffer ID");
+
+    let (service, connection_id, _guard) = setup_connected_service!();
+
+    // Test reading from non-existent buffer
+    let mut read_args = Map::new();
+    read_args.insert("connection_id".to_string(), Value::String(connection_id));
+    read_args.insert(
+        "document".to_string(),
+        Value::String(r#"{"buffer_id": 999}"#.to_string()),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_args),
+        })
+        .await;
+
+    // Should fail with invalid buffer ID
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("Invalid buffer id"));
+
+    service.cancel().await?;
+    info!("Invalid buffer test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_read_buffer_document_identifier_formats() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing read buffer tool with different DocumentIdentifier formats");
+
+    let (service, connection_id, _guard) = setup_connected_service!();
+
+    // First, let's add some content to the buffer
+    let mut exec_lua_args = Map::new();
+    exec_lua_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    exec_lua_args.insert(
+        "code".to_string(),
+        Value::String(
+            r#"
+            vim.api.nvim_buf_set_lines(0, 0, -1, false, {
+                "Line 1: Test content",
+                "Line 2: More content"
+            })
+        "#
+            .to_string(),
+        ),
+    );
+
+    service
+        .call_tool(CallToolRequestParam {
+            name: "exec_lua".into(),
+            arguments: Some(exec_lua_args),
+        })
+        .await?;
+
+    // Test 1: Using structured DocumentIdentifier
+    let mut read_args_struct = Map::new();
+    read_args_struct.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_args_struct.insert("document".to_string(), serde_json::json!({"buffer_id": 0}));
+
+    let result_struct = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_args_struct),
+        })
+        .await?;
+
+    // Test 2: Using string serialized DocumentIdentifier (as in other tests)
+    let mut read_args_string = Map::new();
+    read_args_string.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_args_string.insert(
+        "document".to_string(),
+        Value::String(r#"{"buffer_id": 0}"#.to_string()),
+    );
+
+    let result_string = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_args_string),
+        })
+        .await?;
+
+    // Both results should be identical
+    assert_eq!(result_struct.content.len(), result_string.content.len());
+    if let (Some(content_struct), Some(content_string)) =
+        (result_struct.content.first(), result_string.content.first())
+    {
+        if let (Some(text_struct), Some(text_string)) =
+            (content_struct.as_text(), content_string.as_text())
+        {
+            assert_eq!(text_struct.text, text_string.text);
+            assert!(text_struct.text.contains("Line 1: Test content"));
+            assert!(text_struct.text.contains("Line 2: More content"));
+        } else {
+            panic!("Expected text content in both results");
+        }
+    } else {
+        panic!("Expected content in both results");
+    }
+
+    service.cancel().await?;
+    info!("DocumentIdentifier format test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
 async fn test_complete_workflow() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting MCP client to test nvim-mcp server");
 

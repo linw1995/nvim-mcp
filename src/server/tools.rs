@@ -41,6 +41,28 @@ pub struct BufferRequest {
     pub id: u64,
 }
 
+/// Buffer read request parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct BufferReadRequest {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Start line index (zero-based, optional - defaults to 0)
+    #[serde(default)]
+    pub start: i64,
+    /// End line index, exclusive (zero-based, optional - defaults to -1 for end of buffer)
+    #[serde(default = "default_end_line")]
+    pub end: i64,
+}
+
+fn default_end_line() -> i64 {
+    -1
+}
+
 /// Lua execution request
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ExecuteLuaRequest {
@@ -667,6 +689,53 @@ impl NeovimMcpServer {
                 "timeout_ms": timeout_ms
             }),
         )?]))
+    }
+
+    #[tool(description = "Read content")]
+    #[instrument(skip(self))]
+    pub async fn read(
+        &self,
+        Parameters(BufferReadRequest {
+            connection_id,
+            document,
+            start,
+            end,
+        }): Parameters<BufferReadRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let buffer_id = match &document {
+            DocumentIdentifier::BufferId(id) => *id,
+            _ => 0, // Use buffer 0 as fallback for path-based operations
+        };
+        let lua_code = format!(
+            "return vim.api.nvim_buf_get_lines({}, {}, {}, false)",
+            buffer_id, start, end
+        );
+        let result = client.execute_lua(&lua_code).await?;
+
+        // Convert nvim Value to lines and join them with newlines
+        let lines = lua_tools::convert_nvim_value_to_json(result).map_err(|e| {
+            McpError::internal_error(
+                format!("Failed to convert buffer lines result to JSON: {}", e),
+                None,
+            )
+        })?;
+
+        // Extract lines from the JSON array and join them
+        let text_content = if let serde_json::Value::Array(line_array) = lines {
+            line_array
+                .into_iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<String>>()
+                .join("\n")
+        } else {
+            return Err(McpError::internal_error(
+                "Expected array of lines from nvim_buf_get_lines".to_string(),
+                None,
+            ));
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(text_content)]))
     }
 
     #[tool(description = "Get diagnostics for specific buffer")]
