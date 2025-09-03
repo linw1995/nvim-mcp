@@ -703,38 +703,38 @@ impl NeovimMcpServer {
         }): Parameters<BufferReadRequest>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let buffer_id = match &document {
-            DocumentIdentifier::BufferId(id) => *id,
-            _ => 0, // Use buffer 0 as fallback for path-based operations
+        let text_content = match &document {
+            DocumentIdentifier::BufferId(buffer_id) => {
+                let lua_code = format!(
+                    "return vim.api.nvim_buf_get_lines({}, {}, {}, false)",
+                    buffer_id, start, end
+                );
+                let result = client.execute_lua(&lua_code).await?;
+
+                // Convert nvim Value to lines and join them with newlines
+                let lines = lua_tools::convert_nvim_value_to_json(result).map_err(|e| {
+                    McpError::internal_error(
+                        format!("Failed to convert buffer lines result to JSON: {}", e),
+                        None,
+                    )
+                })?;
+
+                // Extract lines from the JSON array and join them
+                if let serde_json::Value::Array(line_array) = lines {
+                    line_array
+                        .into_iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>()
+                        .join("\n")
+                } else {
+                    return Err(McpError::internal_error(
+                        "Expected array of lines from nvim_buf_get_lines".to_string(),
+                        None,
+                    ));
+                }
+            }
+            _ => unimplemented!(),
         };
-        let lua_code = format!(
-            "return vim.api.nvim_buf_get_lines({}, {}, {}, false)",
-            buffer_id, start, end
-        );
-        let result = client.execute_lua(&lua_code).await?;
-
-        // Convert nvim Value to lines and join them with newlines
-        let lines = lua_tools::convert_nvim_value_to_json(result).map_err(|e| {
-            McpError::internal_error(
-                format!("Failed to convert buffer lines result to JSON: {}", e),
-                None,
-            )
-        })?;
-
-        // Extract lines from the JSON array and join them
-        let text_content = if let serde_json::Value::Array(line_array) = lines {
-            line_array
-                .into_iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect::<Vec<String>>()
-                .join("\n")
-        } else {
-            return Err(McpError::internal_error(
-                "Expected array of lines from nvim_buf_get_lines".to_string(),
-                None,
-            ));
-        };
-
         Ok(CallToolResult::success(vec![Content::text(text_content)]))
     }
 
