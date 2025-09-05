@@ -41,6 +41,28 @@ pub struct BufferRequest {
     pub id: u64,
 }
 
+/// Buffer read request parameters
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct BufferReadRequest {
+    /// Unique identifier for the target Neovim instance
+    pub connection_id: String,
+    /// Universal document identifier
+    // Supports both string and struct deserialization.
+    // Compatible with Claude Code when using subscription.
+    #[serde(deserialize_with = "string_or_struct")]
+    pub document: DocumentIdentifier,
+    /// Start line index (zero-based, optional - defaults to 0)
+    #[serde(default)]
+    pub start: i64,
+    /// End line index, exclusive (zero-based, optional - defaults to -1 for end of buffer)
+    #[serde(default = "default_end_line")]
+    pub end: i64,
+}
+
+fn default_end_line() -> i64 {
+    -1
+}
+
 /// Lua execution request
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ExecuteLuaRequest {
@@ -462,6 +484,7 @@ impl NeovimMcpServer {
         include_files! {
             get_targets,
             connect,
+            read,
         }
     }
 }
@@ -667,6 +690,22 @@ impl NeovimMcpServer {
                 "timeout_ms": timeout_ms
             }),
         )?]))
+    }
+
+    #[tool]
+    #[instrument(skip(self))]
+    pub async fn read(
+        &self,
+        Parameters(BufferReadRequest {
+            connection_id,
+            document,
+            start,
+            end,
+        }): Parameters<BufferReadRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let client = self.get_connection(&connection_id)?;
+        let text_content = client.read_document(document, start, end).await?;
+        Ok(CallToolResult::success(vec![Content::text(text_content)]))
     }
 
     #[tool(description = "Get diagnostics for specific buffer")]

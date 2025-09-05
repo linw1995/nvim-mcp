@@ -70,8 +70,9 @@ Cache the `connection_id` for all subsequent operations.
 2. Read `nvim-diagnostics://{connection_id}/workspace` resource for
    project-wide analysis
 3. Use `buffer_diagnostics` for file-specific investigation
-4. Group diagnostics by severity and file
-5. Keep connection active for follow-up analysis
+4. Use `read` tool with `DocumentIdentifier` for document content analysis
+5. Group diagnostics by severity and file
+6. Keep connection active for follow-up analysis
 
 ### Symbol Navigation
 
@@ -89,6 +90,7 @@ Cache the `connection_id` for all subsequent operations.
    - `lsp_references` for usage sites
    - `lsp_definition` for declarations
 3. Navigate to results using `navigate` tool
+4. Read document content at specific positions with `read` tool
 
 ## Resource Strategy
 

@@ -12,6 +12,11 @@ All notable changes to this project will be documented in this file.
 
 ### New Features
 
+- **Document Reading Tool**: Added new `read` tool for reading document content
+  with universal document identification support. The tool supports reading from
+  buffer IDs, project-relative paths, and absolute file paths with optional
+  line range specification (start/end parameters). This enables comprehensive
+  document content access for analysis and processing workflows
 - **LSP Call Hierarchy Support**: Added comprehensive call hierarchy support
   with three new LSP tools: `lsp_call_hierarchy_prepare`,
   `lsp_call_hierarchy_incoming_calls`, and `lsp_call_hierarchy_outgoing_calls`.

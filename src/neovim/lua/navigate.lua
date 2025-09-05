@@ -1,7 +1,4 @@
--- Navigate tool implementation
--- Args: uri, row, col, buffer_id
 local params_raw = ...
-
 local params = vim.json.decode(params_raw)
 
 -- Convert to 1-based row for Vim (col is already 0-based)
@@ -43,7 +40,6 @@ end
 
 -- Set the cursor position
 local current_buf = vim.api.nvim_get_current_buf()
-local line_count = vim.api.nvim_buf_line_count(current_buf)
 
 -- Set cursor position
 vim.api.nvim_win_set_cursor(0, { params.position.line, params.position.character })
