@@ -109,7 +109,8 @@ Neovim instances associated with your current project:
    - Reports connection status and IDs
 3. **Use connection-aware tools directly**:
    - Server logs will show the `connection_id`s for connected instances
-   - Use tools like `list_buffers`, `buffer_diagnostics`, etc. with these IDs
+   - Use tools like `list_buffers`, `buffer_diagnostics`, `read`, etc.
+     with these IDs
    - Access resources immediately without manual connection setup
 
 ### Specific Target Mode

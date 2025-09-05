@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-The server provides 32 MCP tools for interacting with Neovim:
+The server provides 33 MCP tools for interacting with Neovim:
 
 ## Connection Management
 
@@ -41,6 +41,15 @@ establishment phase:
 
 - **`list_buffers`**: List all open buffers with names and line counts
   - Parameters: `connection_id` (string) - Target Neovim connection
+
+- **`read`**: Read document content with universal document identification
+  - Parameters: `connection_id` (string), `document` (DocumentIdentifier),
+    `start` (number, optional, default: 0) - Start line index (0-based),
+    `end` (number, optional, default: -1) - End line index, exclusive
+    (0-based, -1 for end of buffer)
+  - Returns: Document content as text
+  - Notes: Supports reading from buffer IDs, project-relative paths, and
+    absolute file paths with optional line range specification
 
 - **`buffer_diagnostics`**: Get diagnostics for a specific buffer
   - Parameters: `connection_id` (string), `id` (number) - Buffer ID

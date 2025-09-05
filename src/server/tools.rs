@@ -484,6 +484,7 @@ impl NeovimMcpServer {
         include_files! {
             get_targets,
             connect,
+            read,
         }
     }
 }
@@ -691,7 +692,7 @@ impl NeovimMcpServer {
         )?]))
     }
 
-    #[tool(description = "Read content")]
+    #[tool]
     #[instrument(skip(self))]
     pub async fn read(
         &self,
