@@ -253,6 +253,14 @@ pub trait NeovimClientTrait: Sync {
         client_name: &str,
         item: TypeHierarchyItem,
     ) -> Result<Option<Vec<TypeHierarchyItem>>, NeovimError>;
+
+    /// Read document content by DocumentIdentifier with optional line range
+    async fn read_document(
+        &self,
+        document: DocumentIdentifier,
+        start: i64,
+        end: i64,
+    ) -> Result<String, NeovimError>;
 }
 
 /// Notification tracking structure
@@ -1429,6 +1437,38 @@ pub struct RenameRequestParams {
     pub text_document: TextDocumentIdentifier,
     pub position: Position,
     pub new_name: String,
+}
+
+/// Read document parameters
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ReadDocumentParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buffer_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+    pub start_line: i64,
+    pub end_line: i64,
+}
+
+impl ReadDocumentParams {
+    fn buffer_id(id: u64, start: i64, end: i64) -> Self {
+        Self {
+            buffer_id: Some(id),
+            file_path: None,
+            start_line: start,
+            end_line: end,
+        }
+    }
+
+    fn path<P: AsRef<Path>>(path: P, start: i64, end: i64) -> Self {
+        Self {
+            buffer_id: None,
+            file_path: Some(path.as_ref().to_string_lossy().to_string()),
+            start_line: start,
+            end_line: end,
+        }
+    }
 }
 
 /// Configuration for Neovim client operations
@@ -3281,6 +3321,61 @@ where
                 debug!("Failed to get type hierarchy subtypes: {}", e);
                 Err(NeovimError::Api(format!(
                     "Failed to get type hierarchy subtypes: {e}"
+                )))
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn read_document(
+        &self,
+        document: DocumentIdentifier,
+        start: i64,
+        end: i64,
+    ) -> Result<String, NeovimError> {
+        let conn = self.connection.as_ref().ok_or_else(|| {
+            NeovimError::Connection("Not connected to any Neovim instance".to_string())
+        })?;
+        let params = match &document {
+            DocumentIdentifier::BufferId(buffer_id) => {
+                ReadDocumentParams::buffer_id(*buffer_id, start, end)
+            }
+            DocumentIdentifier::ProjectRelativePath(rel_path) => {
+                // Get project root and construct absolute path
+                let project_root = self.get_project_root().await?;
+                let absolute_path = project_root.join(rel_path);
+                ReadDocumentParams::path(absolute_path, start, end)
+            }
+            DocumentIdentifier::AbsolutePath(abs_path) => {
+                ReadDocumentParams::path(abs_path, start, end)
+            }
+        };
+        match conn
+            .nvim
+            .execute_lua(
+                include_str!("lua/read_document.lua"),
+                vec![
+                    Value::from(serde_json::to_string(&params).unwrap()), // params
+                ],
+            )
+            .await
+        {
+            Ok(result) => {
+                match serde_json::from_str::<NvimExecuteLuaResult<String>>(result.as_str().unwrap())
+                {
+                    Ok(rv) => rv.into(),
+                    Err(e) => {
+                        debug!("Failed to parse read document result: {}", e);
+                        Err(NeovimError::Api(format!(
+                            "Failed to parse read document result: {e}"
+                        )))
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get read document: {}", e);
+                Err(NeovimError::Api(format!(
+                    "Failed to get read document: {e}"
                 )))
             }
         }

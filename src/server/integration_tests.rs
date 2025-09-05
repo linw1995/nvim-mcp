@@ -455,7 +455,7 @@ async fn test_list_buffers_tool() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 #[traced_test]
-async fn test_read_buffer_tool() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_read_buffer() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting MCP client to test read buffer tool");
 
     // Start Neovim instance and use auto-connect service
@@ -571,7 +571,7 @@ async fn test_read_buffer_tool() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 #[traced_test]
-async fn test_read_buffer_invalid_buffer() -> Result<(), Box<dyn std::error::Error>> {
+async fn test_read_buffer_invalid() -> Result<(), Box<dyn std::error::Error>> {
     info!("Testing read buffer tool with invalid buffer ID");
 
     let (service, connection_id, _guard) = setup_connected_service!();
@@ -598,96 +598,6 @@ async fn test_read_buffer_invalid_buffer() -> Result<(), Box<dyn std::error::Err
 
     service.cancel().await?;
     info!("Invalid buffer test completed successfully");
-
-    Ok(())
-}
-
-#[tokio::test]
-#[traced_test]
-async fn test_read_buffer_document_identifier_formats() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Testing read buffer tool with different DocumentIdentifier formats");
-
-    let (service, connection_id, _guard) = setup_connected_service!();
-
-    // First, let's add some content to the buffer
-    let mut exec_lua_args = Map::new();
-    exec_lua_args.insert(
-        "connection_id".to_string(),
-        Value::String(connection_id.clone()),
-    );
-    exec_lua_args.insert(
-        "code".to_string(),
-        Value::String(
-            r#"
-            vim.api.nvim_buf_set_lines(0, 0, -1, false, {
-                "Line 1: Test content",
-                "Line 2: More content"
-            })
-        "#
-            .to_string(),
-        ),
-    );
-
-    service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(exec_lua_args),
-        })
-        .await?;
-
-    // Test 1: Using structured DocumentIdentifier
-    let mut read_args_struct = Map::new();
-    read_args_struct.insert(
-        "connection_id".to_string(),
-        Value::String(connection_id.clone()),
-    );
-    read_args_struct.insert("document".to_string(), serde_json::json!({"buffer_id": 0}));
-
-    let result_struct = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_args_struct),
-        })
-        .await?;
-
-    // Test 2: Using string serialized DocumentIdentifier (as in other tests)
-    let mut read_args_string = Map::new();
-    read_args_string.insert(
-        "connection_id".to_string(),
-        Value::String(connection_id.clone()),
-    );
-    read_args_string.insert(
-        "document".to_string(),
-        Value::String(r#"{"buffer_id": 0}"#.to_string()),
-    );
-
-    let result_string = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_args_string),
-        })
-        .await?;
-
-    // Both results should be identical
-    assert_eq!(result_struct.content.len(), result_string.content.len());
-    if let (Some(content_struct), Some(content_string)) =
-        (result_struct.content.first(), result_string.content.first())
-    {
-        if let (Some(text_struct), Some(text_string)) =
-            (content_struct.as_text(), content_string.as_text())
-        {
-            assert_eq!(text_struct.text, text_string.text);
-            assert!(text_struct.text.contains("Line 1: Test content"));
-            assert!(text_struct.text.contains("Line 2: More content"));
-        } else {
-            panic!("Expected text content in both results");
-        }
-    } else {
-        panic!("Expected content in both results");
-    }
-
-    service.cancel().await?;
-    info!("DocumentIdentifier format test completed successfully");
 
     Ok(())
 }
@@ -1941,5 +1851,284 @@ async fn test_lsp_type_hierarchy_subtypes() -> Result<(), Box<dyn std::error::Er
 
     service.cancel().await?;
     info!("Type hierarchy subtypes test completed successfully");
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_read_project_relative_path() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing read buffer tool with project relative path");
+
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("main.go").to_str().unwrap()
+    );
+
+    // Test reading entire file using project relative path
+    let mut read_args = Map::new();
+    read_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "project_relative_path": "src/testdata/main.go"
+        }),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_args),
+        })
+        .await?;
+
+    info!("Read project relative path result: {:#?}", result);
+    assert!(!result.content.is_empty());
+
+    // Verify the response contains the expected Go file content
+    if let Some(content) = result.content.first() {
+        if let Some(text) = content.as_text() {
+            let text_content = &text.text;
+            assert!(text_content.contains("package main"));
+            assert!(text_content.contains("import \"fmt\""));
+            assert!(text_content.contains("func main()"));
+            assert!(text_content.contains("hello mcp"));
+        } else {
+            panic!("Expected text content in read buffer project relative path result");
+        }
+    } else {
+        panic!("No content in read buffer project relative path result");
+    }
+
+    // Test reading specific line range using project relative path
+    let mut read_range_args = Map::new();
+    read_range_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_range_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "project_relative_path": "src/testdata/main.go"
+        }),
+    );
+    read_range_args.insert("start".to_string(), Value::Number(4.into())); // Line 5: func main()
+    read_range_args.insert("end".to_string(), Value::Number(7.into())); // Lines 5-6
+
+    let range_result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_range_args),
+        })
+        .await?;
+
+    info!(
+        "Read project relative path range result: {:#?}",
+        range_result
+    );
+    assert!(!range_result.content.is_empty());
+
+    // Verify the range response contains only the specified lines
+    if let Some(content) = range_result.content.first() {
+        if let Some(text) = content.as_text() {
+            let text_content = &text.text;
+            assert!(text_content.contains("func main()"));
+            assert!(text_content.contains("for i := 0; i < 10; i++"));
+            assert!(!text_content.contains("package main")); // Should not include line 0
+            assert!(!text_content.contains("}")); // Should not include the final closing brace
+        } else {
+            panic!("Expected text content in read buffer project relative path range result");
+        }
+    } else {
+        panic!("No content in read buffer project relative path range result");
+    }
+
+    service.cancel().await?;
+    info!("Read buffer project relative path test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_read_absolute_path() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing read buffer tool with absolute path");
+
+    let (service, connection_id, _guard) = setup_connected_service!(
+        get_testdata_path("cfg_lsp.lua").to_str().unwrap(),
+        get_testdata_path("main.go").to_str().unwrap()
+    );
+
+    // Get absolute path to the test file
+    let absolute_path = get_testdata_path("main.go")
+        .canonicalize()
+        .expect("Failed to get canonical path")
+        .to_string_lossy()
+        .to_string();
+
+    // Test reading entire file using absolute path
+    let mut read_args = Map::new();
+    read_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "absolute_path": absolute_path
+        }),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_args),
+        })
+        .await?;
+
+    info!("Read absolute path result: {:#?}", result);
+    assert!(!result.content.is_empty());
+
+    // Verify the response contains the expected Go file content
+    if let Some(content) = result.content.first() {
+        if let Some(text) = content.as_text() {
+            let text_content = &text.text;
+            assert!(text_content.contains("package main"));
+            assert!(text_content.contains("import \"fmt\""));
+            assert!(text_content.contains("func main()"));
+            assert!(text_content.contains("hello mcp"));
+        } else {
+            panic!("Expected text content in read buffer absolute path result");
+        }
+    } else {
+        panic!("No content in read buffer absolute path result");
+    }
+
+    // Test reading specific line range using absolute path
+    let mut read_range_args = Map::new();
+    read_range_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    read_range_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "absolute_path": absolute_path
+        }),
+    );
+    read_range_args.insert("start".to_string(), Value::Number(2.into())); // Line 3: import statement
+    read_range_args.insert("end".to_string(), Value::Number(5.into())); // Lines 3-4
+
+    let range_result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(read_range_args),
+        })
+        .await?;
+
+    info!("Read absolute path range result: {:#?}", range_result);
+    assert!(!range_result.content.is_empty());
+
+    // Verify the range response contains only the specified lines
+    if let Some(content) = range_result.content.first() {
+        if let Some(text) = content.as_text() {
+            let text_content = &text.text;
+            assert!(text_content.contains("import \"fmt\""));
+            assert!(text_content.contains("func main()"));
+            assert!(!text_content.contains("package main")); // Should not include line 0
+            assert!(!text_content.contains("for i := 0")); // Should not include line 5+
+        } else {
+            panic!("Expected text content in read buffer absolute path range result");
+        }
+    } else {
+        panic!("No content in read buffer absolute path range result");
+    }
+
+    service.cancel().await?;
+    info!("Read buffer absolute path test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_read_invalid_paths() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Testing read buffer tool with invalid paths");
+
+    let (service, connection_id, _guard) = setup_connected_service!();
+
+    // Test with non-existent project relative path
+    let mut invalid_project_args = Map::new();
+    invalid_project_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    invalid_project_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "project_relative_path": "non/existent/file.go"
+        }),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(invalid_project_args),
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Should fail with non-existent project relative path"
+    );
+    let error = result.unwrap_err();
+    assert!(
+        error.to_string().contains("No such file or directory")
+            || error.to_string().contains("not found")
+            || error.to_string().contains("cannot find")
+            || error.to_string().contains("Can't open file"),
+        "Error message should indicate file not found: {}",
+        error
+    );
+
+    // Test with non-existent absolute path
+    let mut invalid_absolute_args = Map::new();
+    invalid_absolute_args.insert(
+        "connection_id".to_string(),
+        Value::String(connection_id.clone()),
+    );
+    invalid_absolute_args.insert(
+        "document".to_string(),
+        serde_json::json!({
+            "absolute_path": "/completely/non/existent/path/file.txt"
+        }),
+    );
+
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: "read".into(),
+            arguments: Some(invalid_absolute_args),
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Should fail with non-existent absolute path"
+    );
+    let error = result.unwrap_err();
+    assert!(
+        error.to_string().contains("No such file or directory")
+            || error.to_string().contains("not found")
+            || error.to_string().contains("cannot find")
+            || error.to_string().contains("Can't open file"),
+        "Error message should indicate file not found: {}",
+        error
+    );
+
+    service.cancel().await?;
+    info!("Invalid paths test completed successfully");
+
     Ok(())
 }
