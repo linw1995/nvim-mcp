@@ -1,3 +1,3 @@
-Connect via Unix socket/named pipe
+Connect to Neovim via Unix socket or named pipe
 
-- Use get_targets tool to find available targets
+- Cache the `connection_id` returned upon successful connection for future use

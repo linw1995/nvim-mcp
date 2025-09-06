@@ -487,6 +487,14 @@ impl NeovimMcpServer {
             read,
         }
     }
+
+    pub fn get_tool_extra_description(&self, name: &str) -> Option<String> {
+        if name == "get_targets" {
+            Some(self.get_connections_instruction())
+        } else {
+            None
+        }
+    }
 }
 
 #[tool_router]

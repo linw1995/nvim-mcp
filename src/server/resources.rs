@@ -13,48 +13,8 @@ use super::core::NeovimMcpServer;
 impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
     fn get_info(&self) -> ServerInfo {
-        debug!("Providing server information");
-
-        let mut instructions = include_str!("../../docs/instructions.md").to_string();
-
-        // Add connection status section
-        instructions.push_str("\n\n## Connection Status\n\n");
-
-        if let Some(ref connect_mode) = self.connect_mode {
-            instructions.push_str(&format!("Connection mode: `{}`\n\n", connect_mode));
-        }
-
-        // Show active connections with their IDs
-        let connections: Vec<_> = self
-            .nvim_clients
-            .iter()
-            .map(|entry| {
-                let connection_id = entry.key();
-                let target = entry
-                    .value()
-                    .target()
-                    .unwrap_or_else(|| "Unknown".to_string());
-                format!(
-                    "- **Connection ID: `{}`** → Target: `{}`",
-                    connection_id, target
-                )
-            })
-            .collect();
-
-        if connections.is_empty() {
-            instructions.push_str("**Active Connections:** None\n\n");
-            instructions
-                .push_str("Use `get_targets` and `connect` tools to establish connections.");
-        } else {
-            instructions.push_str("**Active Connections:**\n\n");
-            for connection in connections {
-                instructions.push_str(&format!("{}\n", connection));
-            }
-            instructions.push_str("\n**Ready to use!** You can immediately use any connection-aware tools with the connection IDs above.");
-        }
-
         ServerInfo {
-            instructions: Some(instructions),
+            instructions: None,
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_tool_list_changed()
@@ -351,8 +311,18 @@ impl ServerHandler for NeovimMcpServer {
         debug!("Listing tools (static + dynamic) via HybridToolRouter");
 
         // Get tools from HybridToolRouter instead of static router
-        let tools = self.hybrid_router.list_all_tools();
+        let mut tools = self.hybrid_router.list_all_tools();
 
+        for tool in &mut tools {
+            if let Some(extra) = self.get_tool_extra_description(&tool.name) {
+                if let Some(desc) = &mut tool.description {
+                    let new_desc = format!("{}\n{}", desc, extra).trim().to_string();
+                    *desc = new_desc.into();
+                } else {
+                    tool.description = Some(extra.into());
+                }
+            }
+        }
         Ok(ListToolsResult {
             tools,
             next_cursor: None,

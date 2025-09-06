@@ -163,11 +163,7 @@ async fn test_mcp_server_connection() -> Result<(), Box<dyn std::error::Error>> 
 
     // Verify server info contains expected information
     if let Some(info) = server_info {
-        assert!(info.instructions.is_some());
-        if let Some(ref instructions) = info.instructions {
-            assert!(instructions.contains("Neovim"));
-        }
-
+        assert!(info.instructions.is_none());
         // Verify server capabilities
         assert!(info.capabilities.tools.is_some());
     } else {
