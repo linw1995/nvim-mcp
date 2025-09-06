@@ -96,10 +96,9 @@ impl NeovimMcpServer {
 
     /// Get dynamic connections info for LLM
     pub fn get_connections_instruction(&self) -> String {
-        let mut instructions = String::new();
+        let mut instructions = String::from("## Connection Status\n\n");
 
         // Add connection status section
-        instructions.push_str("\n\n## Connection Status\n\n");
 
         if let Some(ref connect_mode) = self.connect_mode {
             instructions.push_str(&format!("Connection mode: `{}`\n\n", connect_mode));
