@@ -40,6 +40,9 @@ All notable changes to this project will be documented in this file.
 - **Enhanced Cursor Position Tool**: Extended cursor position tool to include
   buffer ID and window ID in addition to existing buffer name and coordinates,
   providing more comprehensive cursor context information
+- **Reduce Token Usage and Improve Compatibility**:
+  Removed redundant MCP server instructions and enriched tool descriptions
+  to ensure compatibility with agents that do not parse server-level instructions.
 
 ## [v0.6.0] - 2025-08-30
 

@@ -94,6 +94,47 @@ impl NeovimMcpServer {
         })
     }
 
+    /// Get dynamic connections info for LLM
+    pub fn get_connections_instruction(&self) -> String {
+        let mut instructions = String::new();
+
+        // Add connection status section
+        instructions.push_str("\n\n## Connection Status\n\n");
+
+        if let Some(ref connect_mode) = self.connect_mode {
+            instructions.push_str(&format!("Connection mode: `{}`\n\n", connect_mode));
+        }
+
+        // Show active connections with their IDs
+        let connections: Vec<_> = self
+            .nvim_clients
+            .iter()
+            .map(|entry| {
+                let connection_id = entry.key();
+                let target = entry
+                    .value()
+                    .target()
+                    .unwrap_or_else(|| "Unknown".to_string());
+                format!(
+                    "- **Connection ID: `{}`** → Target: `{}`",
+                    connection_id, target
+                )
+            })
+            .collect();
+
+        if connections.is_empty() {
+            instructions.push_str("**Active Connections:** None\n\n");
+        } else {
+            instructions.push_str("**Active Connections:**\n\n");
+            for connection in connections {
+                instructions.push_str(&format!("{}\n", connection));
+            }
+            instructions.push_str("\n**Ready to use!** You can immediately use any connection-aware tools with the connection IDs above.");
+        }
+
+        instructions
+    }
+
     /// Register a connection-specific tool with clean name
     pub fn register_dynamic_tool(
         &self,
