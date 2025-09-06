@@ -219,7 +219,7 @@ impl HybridToolRouter {
         // 1. Get static tools from macro-generated router
         // Overwrite description for static tools if it has more comprehensive description
         tools.extend(self.static_router.list_all().into_iter().map(|mut tool| {
-            let name = tool.name.as_ref();
+            let name = tool.name.as_ref(); // ref Cow into &str
             if let Some(desc) = self.static_tool_descriptions.get(name) {
                 tool.description = Some(desc.to_owned().trim().into());
             }
