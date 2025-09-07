@@ -14,8 +14,8 @@ use super::core::{NeovimMcpServer, find_get_all_targets};
 use super::lua_tools;
 use crate::neovim::client::TypeHierarchyItem;
 use crate::neovim::{
-    CallHierarchyItem, CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient,
-    NeovimClientTrait, Position, PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
+    CallHierarchyItem, CodeAction, DocumentIdentifier, FormattingOptions, NeovimClient, Position,
+    PrepareRenameResult, Range, WorkspaceEdit, string_or_struct,
 };
 
 /// Connect to Neovim instance via unix socket or TCP
@@ -529,32 +529,9 @@ impl NeovimMcpServer {
 
         let mut client = NeovimClient::default();
         client.connect_path(&path).await?;
-        client.setup_autocmd().await?;
 
-        // Discover and register Lua tools for this connection
-        if let Err(e) =
-            lua_tools::discover_and_register_lua_tools(self, &connection_id, &client).await
-        {
-            tracing::warn!(
-                "Failed to discover Lua tools for connection '{}': {}",
-                connection_id,
-                e
-            );
-        } else {
-            ctx.peer
-                .notify_tool_list_changed()
-                .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(
-                        "Failed to notify tool list changed for connection '{}': {}",
-                        connection_id,
-                        e
-                    );
-                });
-        }
-
-        self.nvim_clients
-            .insert(connection_id.clone(), Box::new(client));
+        self.setup_new_client(&connection_id, Box::new(client), &ctx)
+            .await?;
 
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
@@ -579,32 +556,9 @@ impl NeovimMcpServer {
 
         let mut client = NeovimClient::default();
         client.connect_tcp(&address).await?;
-        client.setup_autocmd().await?;
 
-        // Discover and register Lua tools for this connection
-        if let Err(e) =
-            lua_tools::discover_and_register_lua_tools(self, &connection_id, &client).await
-        {
-            tracing::warn!(
-                "Failed to discover Lua tools for connection '{}': {}",
-                connection_id,
-                e
-            );
-        } else {
-            ctx.peer
-                .notify_tool_list_changed()
-                .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(
-                        "Failed to notify tool list changed for connection '{}': {}",
-                        connection_id,
-                        e
-                    );
-                });
-        }
-
-        self.nvim_clients
-            .insert(connection_id.clone(), Box::new(client));
+        self.setup_new_client(&connection_id, Box::new(client), &ctx)
+            .await?;
 
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
@@ -637,7 +591,6 @@ impl NeovimMcpServer {
                 serde_json::json!({
                     "connection_id": connection_id,
                     "target": target,
-                    "message": format!("Disconnected from Neovim at {target}")
                 }),
             )?]))
         } else {

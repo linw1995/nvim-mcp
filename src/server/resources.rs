@@ -5,7 +5,7 @@ use rmcp::{
     service::{RequestContext, RoleServer},
 };
 use serde_json::json;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 
 use super::core::NeovimMcpServer;
 
@@ -323,6 +323,24 @@ impl ServerHandler for NeovimMcpServer {
                 }
             }
         }
+
+        if self.nvim_clients.is_empty() {
+            info!("filter out the connection-awared tools if no connections");
+            tools.retain(|tool| {
+                !tool
+                    .input_schema
+                    .get("properties")
+                    .map(|x| {
+                        if let serde_json::Value::Object(x) = x {
+                            x.contains_key("connection_id")
+                        } else {
+                            false
+                        }
+                    })
+                    .unwrap_or_default()
+            });
+        }
+
         Ok(ListToolsResult {
             tools,
             next_cursor: None,

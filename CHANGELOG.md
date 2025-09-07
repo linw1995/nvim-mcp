@@ -43,6 +43,12 @@ All notable changes to this project will be documented in this file.
 - **Reduce Token Usage and Improve Compatibility**:
   Removed redundant MCP server instructions and enriched tool descriptions
   to ensure compatibility with agents that do not parse server-level instructions.
+- **Connection Setup Refactoring**: Extracted common client setup logic into
+  `setup_new_client` method to reduce code duplication between `connect_path`
+  and `connect_tcp` methods
+- **Tool Filtering Enhancement**: Improved tool filtering to automatically
+  filter out connection-aware tools when no active connections exist,
+  providing cleaner tool listings for users
 
 ## [v0.6.0] - 2025-08-30
 
