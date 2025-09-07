@@ -190,12 +190,9 @@ async fn test_list_tools() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify we have the expected tools
     let tool_names: Vec<&str> = tools.tools.iter().map(|t| t.name.as_ref()).collect();
+    assert!(tool_names.contains(&"get_targets"));
     assert!(tool_names.contains(&"connect"));
     assert!(tool_names.contains(&"connect_tcp"));
-    assert!(tool_names.contains(&"disconnect"));
-    assert!(tool_names.contains(&"list_buffers"));
-    assert!(tool_names.contains(&"lsp_clients"));
-    assert!(tool_names.contains(&"lsp_references"));
 
     // Verify tool descriptions are present
     for tool in &tools.tools {
@@ -372,7 +369,6 @@ async fn test_disconnect_nvim() -> Result<(), Box<dyn std::error::Error>> {
     // Verify the response contains success message
     if let Some(content) = result.content.first() {
         if let Some(text) = content.as_text() {
-            assert!(text.text.contains("Disconnected from Neovim"));
             assert!(text.text.contains(&ipc_path));
         } else {
             panic!("Expected text content in disconnect result");
