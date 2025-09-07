@@ -2,7 +2,7 @@ use std::process::Command;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use rmcp::ErrorData as McpError;
+use rmcp::{ErrorData as McpError, RoleServer, service::RequestContext};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -160,6 +160,47 @@ impl NeovimMcpServer {
             let client = item.value().as_ref();
             lua_tools::discover_and_register_lua_tools(self, connection_id, client).await?;
         }
+        Ok(())
+    }
+
+    pub(crate) async fn setup_new_client(
+        &self,
+        connection_id: &String,
+        client: Box<dyn NeovimClientTrait + Send + Sync>,
+        ctx: &RequestContext<RoleServer>,
+    ) -> Result<(), McpError> {
+        client.setup_autocmd().await?;
+
+        let mut should_notify = self.nvim_clients.is_empty();
+
+        // Discover and register Lua tools for this connection
+        if let Err(e) =
+            lua_tools::discover_and_register_lua_tools(self, connection_id, client.as_ref()).await
+        {
+            tracing::warn!(
+                "Failed to discover Lua tools for connection '{}': {}",
+                connection_id,
+                e
+            );
+        } else {
+            should_notify = true;
+        }
+
+        self.nvim_clients.insert(connection_id.clone(), client);
+
+        if should_notify {
+            ctx.peer
+                .notify_tool_list_changed()
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to notify tool list changed for connection '{}': {}",
+                        connection_id,
+                        e
+                    );
+                });
+        }
+
         Ok(())
     }
 }
