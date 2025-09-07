@@ -9,10 +9,11 @@ export RUSTFLAGS="-Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Clink-d
 # export RUSTFLAGS="-Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Zpanic_abort_tests -Cpanic=abort"
 # export RUSTDOCFLAGS="-Cpanic=abort"
 export CARGO_TARGET_DIR="./target/coverage"
-export LLVM_PROFILE_FILE="${CARGO_TARGET_DIR}/data/nvim-mcp-%p-%m.profraw"
+export COVERAGE_DIR=${CARGO_TARGET_DIR}/data
+export LLVM_PROFILE_FILE="${COVERAGE_DIR}/nvim-mcp-%p-%m.profraw"
 
-rm -rf ${CARGO_TARGET_DIR}/data/
-mkdir -p ${CARGO_TARGET_DIR}/data/
+rm -rf ${COVERAGE_DIR}
+mkdir -p ${CARGO_TARGET_DIR}
 
 cargo clean --package nvim-mcp # Make sure to clean previous builds (Force build.rs to be reruned)
 cargo build --bin nvim-mcp
@@ -33,3 +34,10 @@ grcov ${CARGO_TARGET_DIR}/data \
 	--output-types html,cobertura,markdown \
 	--output-path ${CARGO_TARGET_DIR}/result/
 tail -n 1 ${CARGO_TARGET_DIR}/result/markdown.md
+
+echo "Generating Lua code coverage report..."
+
+cd ${COVERAGE_DIR}
+cat luacov.stats.*.out > luacov.stats.out
+luacov
+tail -n 1 luacov.report.out

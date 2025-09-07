@@ -1,6 +1,7 @@
 pub mod client;
 mod connection;
 mod error;
+mod lua;
 
 #[cfg(test)]
 pub mod integration_tests;

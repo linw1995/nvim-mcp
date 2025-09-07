@@ -1,5 +1,13 @@
 -- Add current project's lua directory to package path for nvim-mcp plugin
 package.path = "./lua/?.lua;./lua/?/init.lua;" .. package.path
+-- LuaCov
+require("luacov.runner").init({
+    statsfile = vim.env.COVERAGE_DIR .. "/luacov.stats." .. vim.fn.getpid() .. ".out",
+    tick = true,
+    savestepsize = 1,
+    exclude = { "/nix/" },
+    includeuntestedfiles = true,
+})
 
 vim.lsp.config["luals"] = {
     cmd = { "lua-language-server" },

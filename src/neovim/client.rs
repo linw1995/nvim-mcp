@@ -20,6 +20,8 @@ use tokio::{
 };
 use tracing::{debug, info, instrument};
 
+use crate::neovim::lua;
+
 use super::{connection::NeovimConnection, error::NeovimError};
 
 /// Common trait for Neovim client operations
@@ -1695,7 +1697,7 @@ where
         match conn
             .nvim
             .execute_lua(
-                include_str!("lua/lsp_make_text_document_params.lua"),
+                lua::SCRIPT_LSP_MAKE_TEXT_DOCUMENT_PARAMS,
                 vec![Value::from(buffer_id)],
             )
             .await

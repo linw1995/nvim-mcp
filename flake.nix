@@ -118,7 +118,10 @@
 
                 # Integration tests
                 neovim-unwrapped
+
                 lua-language-server
+                luajitPackages.lua
+                luajitPackages.luacov
 
                 go
                 gopls
