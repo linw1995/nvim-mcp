@@ -134,10 +134,9 @@ pub struct HoverParam {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Document symbols parameters
@@ -166,10 +165,9 @@ pub struct ReferencesParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
     /// Include the declaration of the current symbol in the results
     pub include_declaration: bool,
 }
@@ -186,10 +184,9 @@ pub struct DefinitionParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Type definition parameters
@@ -204,10 +201,9 @@ pub struct TypeDefinitionParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Implementation parameters
@@ -222,10 +218,9 @@ pub struct ImplementationParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Declaration parameters
@@ -240,10 +235,9 @@ pub struct DeclarationParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Code action resolve parameters
@@ -286,10 +280,9 @@ pub struct RenameParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
     /// The new name of the symbol
     pub new_name: String,
     /// Whether to run prepare rename first to validate the position (default: true)
@@ -379,10 +372,9 @@ pub struct NavigateParams {
     // Compatible with Claude Code when using subscription.
     #[serde(deserialize_with = "string_or_struct")]
     pub document: DocumentIdentifier,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Call hierarchy prepare parameters
@@ -397,10 +389,9 @@ pub struct CallHierarchyPrepareParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Call hierarchy incoming calls parameters
@@ -439,10 +430,9 @@ pub struct TypeHierarchyPrepareParams {
     pub document: DocumentIdentifier,
     /// Lsp client name
     pub lsp_client_name: String,
-    /// Symbol position, line number starts from 0
-    pub line: u64,
-    /// Symbol position, character number starts from 0
-    pub character: u64,
+    /// Symbol position (zero-based)
+    #[serde(flatten)]
+    pub position: Position,
 }
 
 /// Type hierarchy supertypes parameters
@@ -747,12 +737,10 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
         }): Parameters<HoverParam>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let hover = client
             .lsp_hover(&lsp_client_name, document, position)
             .await?;
@@ -784,13 +772,11 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
             include_declaration,
         }): Parameters<ReferencesParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let references = client
             .lsp_references(&lsp_client_name, document, position, include_declaration)
             .await?;
@@ -805,12 +791,10 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
         }): Parameters<DefinitionParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let definition = client
             .lsp_definition(&lsp_client_name, document, position)
             .await?;
@@ -825,12 +809,10 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
         }): Parameters<TypeDefinitionParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let type_definition = client
             .lsp_type_definition(&lsp_client_name, document, position)
             .await?;
@@ -847,12 +829,10 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
         }): Parameters<ImplementationParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let implementation = client
             .lsp_implementation(&lsp_client_name, document, position)
             .await?;
@@ -869,12 +849,10 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
         }): Parameters<DeclarationParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let declaration = client
             .lsp_declaration(&lsp_client_name, document, position)
             .await?;
@@ -925,14 +903,12 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
             new_name,
             prepare_first,
         }): Parameters<RenameParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
 
         // Optionally run prepare rename first to validate the position
         if prepare_first {
@@ -1158,12 +1134,10 @@ impl NeovimMcpServer {
         Parameters(NavigateParams {
             connection_id,
             document,
-            line,
-            character,
+            position,
         }): Parameters<NavigateParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let result = client.navigate(document, position).await?;
         Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
@@ -1176,12 +1150,10 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
         }): Parameters<CallHierarchyPrepareParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let result = client
             .lsp_call_hierarchy_prepare(&lsp_client_name, document, position)
             .await?;
@@ -1230,12 +1202,10 @@ impl NeovimMcpServer {
             connection_id,
             document,
             lsp_client_name,
-            line,
-            character,
+            position,
         }): Parameters<TypeHierarchyPrepareParams>,
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
-        let position = Position { line, character };
         let result = client
             .lsp_type_hierarchy_prepare(&lsp_client_name, document, position)
             .await?;

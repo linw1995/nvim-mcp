@@ -43,6 +43,12 @@ All notable changes to this project will be documented in this file.
 - **Reduce Token Usage and Improve Compatibility**:
   Removed redundant MCP server instructions and enriched tool descriptions
   to ensure compatibility with agents that do not parse server-level instructions.
+- **Position Parameter Refactoring**: Refactored LSP tool parameter structures
+  to use a unified `Position` type with `#[serde(flatten)]` attribute instead of
+  separate `line` and `character` fields. This improves API consistency and
+  reduces boilerplate code across all LSP tools that accept position parameters
+- **Position Type Documentation**: Simplified Position struct documentation by
+  removing redundant encoding details that are better handled at the protocol level
 - **Connection Setup Refactoring**: Extracted common client setup logic into
   `setup_new_client` method to reduce code duplication between `connect_path`
   and `connect_tcp` methods
