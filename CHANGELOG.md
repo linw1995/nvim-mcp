@@ -37,6 +37,10 @@ All notable changes to this project will be documented in this file.
 
 ### Improved
 
+- **Enhanced Tool Documentation**: Added external documentation for `buffer_diagnostics`
+  tool with separate markdown file containing detailed parameter descriptions.
+  Updated tool registration to use external documentation instead of inline
+  descriptions for better maintainability and richer documentation
 - **Enhanced Cursor Position Tool**: Extended cursor position tool to include
   buffer ID and window ID in addition to existing buffer name and coordinates,
   providing more comprehensive cursor context information
