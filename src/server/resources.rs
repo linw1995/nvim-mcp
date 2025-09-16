@@ -9,6 +9,20 @@ use tracing::{debug, info, instrument};
 
 use super::core::NeovimMcpServer;
 
+fn new_resource(uri: &str, name: &str, description: Option<&str>) -> Resource {
+    Resource {
+        raw: RawResource {
+            uri: uri.to_string(),
+            name: name.to_string(),
+            description: description.map(|s| s.to_string()),
+            mime_type: Some("application/json".to_string()),
+            size: None,
+            icons: None,
+            title: None,
+        },
+        annotations: None,
+    }
+}
 // Manual ServerHandler implementation to override tool methods
 impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
@@ -33,28 +47,16 @@ impl ServerHandler for NeovimMcpServer {
         debug!("Listing available diagnostic resources");
 
         let mut resources = vec![
-            Resource {
-                raw: RawResource {
-                    uri: "nvim-connections://".to_string(),
-                    name: "Active Neovim Connections".to_string(),
-                    description: Some("List of active Neovim connections".to_string()),
-                    mime_type: Some("application/json".to_string()),
-                    size: None,
-                },
-                annotations: None,
-            },
-            Resource {
-                raw: RawResource {
-                    uri: "nvim-tools://".to_string(),
-                    name: "Tool Registration Overview".to_string(),
-                    description: Some(
-                        "Overview of all tools and their connection mappings".to_string(),
-                    ),
-                    mime_type: Some("application/json".to_string()),
-                    size: None,
-                },
-                annotations: None,
-            },
+            new_resource(
+                "nvim-connections://",
+                "Active Neovim Connections",
+                Some("List of active Neovim connections"),
+            ),
+            new_resource(
+                "nvim-tools://",
+                "Tool Registration Overview",
+                Some("Overview of all tools and their connection mappings"),
+            ),
         ];
 
         // Add connection-specific resources
@@ -62,32 +64,22 @@ impl ServerHandler for NeovimMcpServer {
             let connection_id = connection_entry.key().clone();
 
             // Add diagnostic resource
-            resources.push(Resource {
-                raw: RawResource {
-                    uri: format!("nvim-diagnostics://{connection_id}/workspace"),
-                    name: format!("Workspace Diagnostics ({connection_id})"),
-                    description: Some(format!(
-                        "Diagnostic messages for connection {connection_id}"
-                    )),
-                    mime_type: Some("application/json".to_string()),
-                    size: None,
-                },
-                annotations: None,
-            });
+            resources.push(new_resource(
+                &format!("nvim-diagnostics://{connection_id}/workspace"),
+                &format!("Workspace Diagnostics ({connection_id})"),
+                Some(&format!(
+                    "Diagnostic messages for connection {connection_id}"
+                )),
+            ));
 
             // Add connection-specific tools resource
-            resources.push(Resource {
-                raw: RawResource {
-                    uri: format!("nvim-tools://{connection_id}"),
-                    name: format!("Tools for Connection ({connection_id})"),
-                    description: Some(format!(
-                        "List of tools available for connection {connection_id}"
-                    )),
-                    mime_type: Some("application/json".to_string()),
-                    size: None,
-                },
-                annotations: None,
-            });
+            resources.push(new_resource(
+                &format!("nvim-tools://{connection_id}"),
+                &format!("Tools for Connection ({connection_id})"),
+                Some(&format!(
+                    "List of tools available for connection {connection_id}"
+                )),
+            ));
         }
 
         Ok(ListResourcesResult {

@@ -72,6 +72,8 @@ impl From<&dyn DynamicTool> for Tool {
                 idempotent_hint: None,
                 open_world_hint: None,
             }),
+            title: None,
+            icons: None,
         }
     }
 }
