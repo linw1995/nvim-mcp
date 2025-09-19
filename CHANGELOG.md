@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.7.0] - 2025-09-19
+
 ### New Features
 
 - **Document Reading Tool**: Added new `read` tool for reading document content
