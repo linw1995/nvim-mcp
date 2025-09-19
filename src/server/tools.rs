@@ -475,6 +475,7 @@ impl NeovimMcpServer {
             get_targets,
             connect,
             read,
+            buffer_diagnostics,
         }
     }
 
@@ -659,7 +660,7 @@ impl NeovimMcpServer {
         Ok(CallToolResult::success(vec![Content::text(text_content)]))
     }
 
-    #[tool(description = "Get diagnostics for specific buffer")]
+    #[tool]
     #[instrument(skip(self))]
     pub async fn buffer_diagnostics(
         &self,

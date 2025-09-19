@@ -308,7 +308,8 @@ impl ServerHandler for NeovimMcpServer {
         for tool in &mut tools {
             if let Some(extra) = self.get_tool_extra_description(&tool.name) {
                 if let Some(desc) = &mut tool.description {
-                    let new_desc = format!("{}\n{}", desc, extra).trim().to_string();
+                    // Follow the markdown format, ensuring two new lines between paragraphs
+                    let new_desc = format!("{}\n\n{}", desc, extra).trim().to_string();
                     *desc = new_desc.into();
                 } else {
                     tool.description = Some(extra.into());
