@@ -42,7 +42,7 @@ tracing-appender = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 
 # MCP Protocol Implementation
-rmcp = { version = "0.6", features = [
+rmcp = { version = "0.7", features = [
   "transport-io",
   "transport-child-process",
   "transport-streamable-http-server",
