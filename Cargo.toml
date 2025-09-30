@@ -63,7 +63,7 @@ nvim-rs = { version = "0.9.2", features = ["use_tokio"] }
 rmpv = "1.0"
 
 # Serialization
-serde = "1.0.226"
+serde = "1.0.228"
 serde_json = "1.0.145"
 schemars = "1.0"
 
