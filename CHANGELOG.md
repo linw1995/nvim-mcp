@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Generate default schema for tools with no params. Resolves #122
+
 ## [v0.7.0] - 2025-09-19
 
 ### New Features
