@@ -75,7 +75,7 @@ glob = "0.3"
 
 # Multi-connection Support
 dashmap = "6.1"
-regex = "1.11"
+regex = "1.12"
 blake3 = "1.5"
 
 [dev-dependencies]
