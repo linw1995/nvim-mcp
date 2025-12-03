@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## v0.7.2 - 2025-12-03
+
+### Fixed
+
+- **Dependency Compatibility**: Fixed installation error with rmcp-0.10.0
+
 ## [v0.7.1] - 2025-10-09
 
 ### Fixed
