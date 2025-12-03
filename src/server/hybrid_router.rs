@@ -59,22 +59,15 @@ impl From<&dyn DynamicTool> for Tool {
         if !required.iter().any(|v| v.as_str() == Some("connection_id")) {
             required.push(serde_json::json!("connection_id"));
         }
-
-        Tool {
-            name: val.name().to_owned().into(),
-            description: Some(val.description().to_owned().into()),
-            input_schema: Arc::new(schema),
-            output_schema: None,
-            annotations: Some(ToolAnnotations {
-                title: Some(format!("Dynamic: {}", val.name())),
-                read_only_hint: None,
-                destructive_hint: None,
-                idempotent_hint: None,
-                open_world_hint: None,
-            }),
-            title: None,
-            icons: None,
-        }
+        let mut tool = Tool::new(val.name().to_owned(), val.description().to_owned(), schema);
+        tool.annotations = Some(ToolAnnotations {
+            title: Some(format!("Dynamic: {}", val.name())),
+            read_only_hint: None,
+            destructive_hint: None,
+            idempotent_hint: None,
+            open_world_hint: None,
+        });
+        tool
     }
 }
 
