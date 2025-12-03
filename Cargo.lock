@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "nvim-mcp"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "async-trait",
  "blake3",
