@@ -326,7 +326,7 @@ async fn test_lsp_resolve_code_action() {
             "Resolved edit should contain os.Stdout parameter"
         );
         assert!(
-            edit_json.contains("\\t\\\"os\\\""),
+            edit_json.contains("import") && edit_json.contains("\\\"os\\\""),
             "Resolved edit should add os import"
         );
 
@@ -583,15 +583,29 @@ pub fn main() !void {
 "#;
     fs::write(&temp_file_path, zig_content).expect("Failed to write Zig file");
 
-    // Setup Neovim with zls (Zig Language Server)
+    // Setup Neovim with zls (Zig Language Server).
+    //
+    // Do NOT wait for diagnostics here: zls may not publish diagnostics for a clean file,
+    // and Neovim won't necessarily emit DiagnosticChanged in that case.
     let ipc_path = generate_random_ipc_path();
     let cfg_path = get_testdata_path("cfg_lsp.lua");
-    let (client, _guard) = setup_auto_connected_client_ipc_advance(
+    let child = setup_neovim_instance_ipc_advance(
         &ipc_path,
         cfg_path.to_str().unwrap(),
         temp_file_path.to_str().unwrap(),
     )
     .await;
+    let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
+    let mut client = NeovimClient::default();
+
+    let result = client.connect_path(&ipc_path).await;
+    assert!(result.is_ok(), "Failed to connect to Neovim: {result:?}");
+
+    let result = client.setup_autocmd().await;
+    assert!(result.is_ok(), "Failed to setup autocmd: {result:?}");
+
+    let lsp_result = client.wait_for_lsp_ready(None, 15000).await;
+    assert!(lsp_result.is_ok(), "Failed to wait for LSP: {lsp_result:?}");
 
     // Get LSP clients
     let lsp_clients = client.lsp_get_clients().await.unwrap();

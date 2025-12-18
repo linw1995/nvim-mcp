@@ -39,7 +39,7 @@
         packages = rec {
           default = nvim-mcp;
           nvim-mcp = let
-            inherit (pkgs.fenix.stable) toolchain;
+            toolchain = (pkgs.fenix.stable).minimalToolchain;
             rustPlatform = pkgs.makeRustPlatform {
               cargo = toolchain;
               rustc = toolchain;
