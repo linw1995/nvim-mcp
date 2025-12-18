@@ -2944,51 +2944,68 @@ where
             client_name, timeout_ms
         );
 
-        // Wait for NVIM_MCP_LspAttach notification
-        let notification = self
-            .wait_for_notification("NVIM_MCP_LspAttach", timeout_ms)
-            .await?;
+        let is_ready = |clients: &[LspClient]| match client_name {
+            None => !clients.is_empty(),
+            Some(expected_name) => clients.iter().any(|c| c.name == expected_name),
+        };
 
-        // If specific client name is requested, verify it matches
-        if let Some(expected_client_name) = client_name {
-            // Parse the notification args to check client name
-            if let Some(attach_data) = notification.args.first() {
-                // Extract client_name from the nvim_rs::Value
-                if let Value::Map(map) = attach_data {
-                    // Find the client_name key-value pair in the map
-                    let client_name_key = Value::String("client_name".into());
-                    let client_name_value = map
-                        .iter()
-                        .find(|(k, _)| k == &client_name_key)
-                        .map(|(_, v)| v);
-
-                    if let Some(Value::String(actual_client_name)) = client_name_value {
-                        let actual_str = actual_client_name.as_str().unwrap_or("");
-                        if actual_str != expected_client_name {
-                            return Err(NeovimError::Api(format!(
-                                "LSP client '{}' attached but expected '{}'",
-                                actual_str, expected_client_name
-                            )));
-                        }
-                    } else {
-                        return Err(NeovimError::Api(
-                            "LSP attach notification missing or invalid client_name".to_string(),
-                        ));
-                    }
-                } else {
-                    return Err(NeovimError::Api(
-                        "LSP attach notification data is not a map".to_string(),
-                    ));
-                }
-            } else {
-                return Err(NeovimError::Api(
-                    "LSP attach notification missing data".to_string(),
-                ));
-            }
+        // The LSP client might have already attached before we installed the LspAttach autocmd.
+        let clients = self.lsp_get_clients().await?;
+        if is_ready(&clients) {
+            debug!("LSP client readiness confirmed (already attached)");
+            return Ok(());
         }
 
-        debug!("LSP client readiness confirmed");
-        Ok(())
+        let start = std::time::Instant::now();
+        loop {
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+            let remaining_ms = timeout_ms.saturating_sub(elapsed_ms);
+            if remaining_ms == 0 {
+                break;
+            }
+
+            let notification = self
+                .wait_for_notification("NVIM_MCP_LspAttach", remaining_ms)
+                .await?;
+
+            if let Some(expected_client_name) = client_name {
+                let Some(attach_data) = notification.args.first() else {
+                    continue;
+                };
+
+                let Value::Map(map) = attach_data else {
+                    continue;
+                };
+
+                let client_name_key = Value::String("client_name".into());
+                let Some(Value::String(actual_client_name)) = map
+                    .iter()
+                    .find(|(k, _)| k == &client_name_key)
+                    .map(|(_, v)| v)
+                else {
+                    continue;
+                };
+
+                let actual_str = actual_client_name.as_str().unwrap_or("");
+                if actual_str != expected_client_name {
+                    continue;
+                }
+            }
+
+            debug!("LSP client readiness confirmed");
+            return Ok(());
+        }
+
+        let clients = self.lsp_get_clients().await?;
+        if is_ready(&clients) {
+            debug!("LSP client readiness confirmed (attached during timeout)");
+            Ok(())
+        } else {
+            Err(NeovimError::Api(format!(
+                "Timeout waiting for LSP client attach: {:?}",
+                client_name
+            )))
+        }
     }
 
     #[instrument(skip(self))]
