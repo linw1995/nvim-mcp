@@ -34,7 +34,7 @@ tokio = { version = "1.48", features = ["full"] }
 thiserror = "2.0"
 
 # Logging and Tracing
-tracing = "0.1.43"
+tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tracing-appender = "0.2"
 
