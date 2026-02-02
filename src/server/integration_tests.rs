@@ -1,5 +1,5 @@
 use rmcp::{
-    model::{CallToolRequestParam, ReadResourceRequestParam},
+    model::{CallToolRequestParams, ReadResourceRequestParams},
     serde_json::{Map, Value},
     service::ServiceExt,
     transport::{ConfigureCommandExt, TokioChildProcess},
@@ -9,6 +9,29 @@ use tracing::{error, info};
 use tracing_test::traced_test;
 
 use crate::{server::core::b3sum, test_utils::*};
+
+/// Helper function to create CallToolRequestParams with only required fields.
+/// Other fields use default values to avoid API breakage when rmcp adds new fields.
+fn call_tool_req(
+    name: impl Into<String>,
+    arguments: Option<Map<String, Value>>,
+) -> CallToolRequestParams {
+    CallToolRequestParams {
+        name: name.into().into(),
+        arguments,
+        meta: None,
+        task: None,
+    }
+}
+
+/// Helper function to create ReadResourceRequestParams with only required fields.
+/// Other fields use default values to avoid API breakage when rmcp adds new fields.
+fn read_resource_req(uri: impl Into<String>) -> ReadResourceRequestParams {
+    ReadResourceRequestParams {
+        uri: uri.into(),
+        meta: None,
+    }
+}
 
 // Macro to create an MCP service using the pre-compiled binary
 macro_rules! create_mcp_service {
@@ -64,10 +87,7 @@ macro_rules! connect_to_neovim {
         connect_args.insert("target".to_string(), Value::String($ipc_path));
 
         let connect_result = $service
-            .call_tool(CallToolRequestParam {
-                name: "connect".into(),
-                arguments: Some(connect_args),
-            })
+            .call_tool(call_tool_req("connect", Some(connect_args)))
             .await?;
 
         extract_connection_id(&connect_result)?
@@ -83,10 +103,7 @@ macro_rules! wait_for_lsp_ready {
         wait_lsp_args.insert("timeout_ms".to_string(), Value::Number(30000.into()));
 
         $service
-            .call_tool(CallToolRequestParam {
-                name: "wait_for_lsp_ready".into(),
-                arguments: Some(wait_lsp_args),
-            })
+            .call_tool(call_tool_req("wait_for_lsp_ready", Some(wait_lsp_args)))
             .await?;
 
         info!("LSP client ready");
@@ -223,10 +240,7 @@ async fn test_connect_nvim() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test successful connection
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(arguments),
-        })
+        .call_tool(call_tool_req("connect", Some(arguments)))
         .await?;
 
     info!("Connect result: {:#?}", result);
@@ -248,10 +262,7 @@ async fn test_connect_nvim() -> Result<(), Box<dyn std::error::Error>> {
     arguments2.insert("target".to_string(), Value::String(ipc_path.clone()));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(arguments2),
-        })
+        .call_tool(call_tool_req("connect", Some(arguments2)))
         .await;
 
     // For IPC connections, we allow reconnection to the same path
@@ -306,10 +317,7 @@ async fn test_invalid_connection_id_handling() -> Result<(), Box<dyn std::error:
         }
 
         let result = service
-            .call_tool(CallToolRequestParam {
-                name: tool_name.into(),
-                arguments: Some(args),
-            })
+            .call_tool(call_tool_req(tool_name.to_string(), Some(args)))
             .await;
 
         assert!(
@@ -341,10 +349,7 @@ async fn test_disconnect_nvim() -> Result<(), Box<dyn std::error::Error>> {
     connect_args.insert("target".to_string(), Value::String(ipc_path.clone()));
 
     let connect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
+        .call_tool(call_tool_req("connect", Some(connect_args)))
         .await?;
 
     let connection_id = extract_connection_id(&connect_result)?;
@@ -357,10 +362,7 @@ async fn test_disconnect_nvim() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "disconnect".into(),
-            arguments: Some(disconnect_args),
-        })
+        .call_tool(call_tool_req("disconnect", Some(disconnect_args)))
         .await?;
 
     info!("Disconnect result: {:#?}", result);
@@ -382,10 +384,7 @@ async fn test_disconnect_nvim() -> Result<(), Box<dyn std::error::Error>> {
     disconnect_args2.insert("connection_id".to_string(), Value::String(connection_id));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "disconnect".into(),
-            arguments: Some(disconnect_args2),
-        })
+        .call_tool(call_tool_req("disconnect", Some(disconnect_args2)))
         .await;
 
     assert!(
@@ -413,10 +412,7 @@ async fn test_list_buffers_tool() -> Result<(), Box<dyn std::error::Error>> {
     list_buffers_args.insert("connection_id".to_string(), Value::String(connection_id));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "list_buffers".into(),
-            arguments: Some(list_buffers_args),
-        })
+        .call_tool(call_tool_req("list_buffers", Some(list_buffers_args)))
         .await?;
 
     info!("List buffers result: {:#?}", result);
@@ -475,10 +471,7 @@ async fn test_read_buffer() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(exec_lua_args),
-        })
+        .call_tool(call_tool_req("exec_lua", Some(exec_lua_args)))
         .await?;
 
     // Test reading entire buffer
@@ -493,10 +486,7 @@ async fn test_read_buffer() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_args),
-        })
+        .call_tool(call_tool_req("read", Some(read_args)))
         .await?;
 
     info!("Read buffer result: {:#?}", result);
@@ -531,10 +521,7 @@ async fn test_read_buffer() -> Result<(), Box<dyn std::error::Error>> {
     read_range_args.insert("end".to_string(), Value::Number(3.into()));
 
     let range_result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_range_args),
-        })
+        .call_tool(call_tool_req("read", Some(read_range_args)))
         .await?;
 
     info!("Read buffer range result: {:#?}", range_result);
@@ -577,10 +564,7 @@ async fn test_read_buffer_invalid() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_args),
-        })
+        .call_tool(call_tool_req("read", Some(read_args)))
         .await;
 
     // Should fail with invalid buffer ID
@@ -622,10 +606,7 @@ async fn test_complete_workflow() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "list_buffers".into(),
-            arguments: Some(list_buffers_args),
-        })
+        .call_tool(call_tool_req("list_buffers", Some(list_buffers_args)))
         .await?;
 
     assert!(!result.content.is_empty());
@@ -640,10 +621,7 @@ async fn test_complete_workflow() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_clients".into(),
-            arguments: Some(lsp_clients_args),
-        })
+        .call_tool(call_tool_req("lsp_clients", Some(lsp_clients_args)))
         .await?;
 
     assert!(!result.content.is_empty());
@@ -658,10 +636,7 @@ async fn test_complete_workflow() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "disconnect".into(),
-            arguments: Some(disconnect_args),
-        })
+        .call_tool(call_tool_req("disconnect", Some(disconnect_args)))
         .await?;
 
     assert!(!result.content.is_empty());
@@ -673,10 +648,7 @@ async fn test_complete_workflow() -> Result<(), Box<dyn std::error::Error>> {
     invalid_list_args.insert("connection_id".to_string(), Value::String(connection_id));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "list_buffers".into(),
-            arguments: Some(invalid_list_args),
-        })
+        .call_tool(call_tool_req("list_buffers", Some(invalid_list_args)))
         .await;
 
     assert!(
@@ -707,30 +679,19 @@ async fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect_tcp".into(),
-            arguments: Some(invalid_args),
-        })
+        .call_tool(call_tool_req("connect_tcp", Some(invalid_args)))
         .await;
 
     assert!(result.is_err(), "Should fail to connect to invalid address");
 
     // Test calling tools with missing arguments
-    let result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect_tcp".into(),
-            arguments: None,
-        })
-        .await;
+    let result = service.call_tool(call_tool_req("connect_tcp", None)).await;
 
     assert!(result.is_err(), "Should fail when arguments are missing");
 
     // Test calling non-existent tool
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "non_existent_tool".into(),
-            arguments: None,
-        })
+        .call_tool(call_tool_req("non_existent_tool", None))
         .await;
 
     assert!(
@@ -761,10 +722,7 @@ async fn test_exec_lua_tool() -> Result<(), Box<dyn std::error::Error>> {
     lua_args.insert("code".to_string(), Value::String("return 42".to_string()));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(lua_args),
-        })
+        .call_tool(call_tool_req("exec_lua", Some(lua_args)))
         .await?;
 
     info!("Exec Lua result: {:#?}", result);
@@ -793,10 +751,7 @@ async fn test_exec_lua_tool() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(lua_args),
-        })
+        .call_tool(call_tool_req("exec_lua", Some(lua_args)))
         .await?;
 
     assert!(!result.content.is_empty());
@@ -813,10 +768,7 @@ async fn test_exec_lua_tool() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "exec_lua".into(),
-            arguments: Some(string_lua_args),
-        })
+        .call_tool(call_tool_req("exec_lua", Some(string_lua_args)))
         .await?;
 
     assert!(!result.content.is_empty());
@@ -838,10 +790,7 @@ async fn test_lsp_clients_tool() -> Result<(), Box<dyn std::error::Error>> {
     lsp_clients_args.insert("connection_id".to_string(), Value::String(connection_id));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_clients".into(),
-            arguments: Some(lsp_clients_args),
-        })
+        .call_tool(call_tool_req("lsp_clients", Some(lsp_clients_args)))
         .await?;
 
     info!("LSP clients result: {:#?}", result);
@@ -903,9 +852,9 @@ async fn test_read_workspace_diagnostics() -> Result<(), Box<dyn std::error::Err
 
     // Test read workspace diagnostics resource
     let result = service
-        .read_resource(ReadResourceRequestParam {
-            uri: format!("nvim-diagnostics://{connection_id}/workspace"),
-        })
+        .read_resource(read_resource_req(format!(
+            "nvim-diagnostics://{connection_id}/workspace"
+        )))
         .await?;
 
     info!("Read workspace diagnostics result: {:#?}", result);
@@ -922,18 +871,18 @@ async fn test_read_workspace_diagnostics() -> Result<(), Box<dyn std::error::Err
 
     // Test reading invalid resource URI
     let result = service
-        .read_resource(ReadResourceRequestParam {
-            uri: "nvim-diagnostics://invalid/workspace".to_string(),
-        })
+        .read_resource(read_resource_req(
+            "nvim-diagnostics://invalid/workspace".to_string(),
+        ))
         .await;
 
     assert!(result.is_err(), "Should fail for invalid connection ID");
 
     // Test reading buffer diagnostics resource
     let result = service
-        .read_resource(ReadResourceRequestParam {
-            uri: format!("nvim-diagnostics://{connection_id}/buffer/1"),
-        })
+        .read_resource(read_resource_req(format!(
+            "nvim-diagnostics://{connection_id}/buffer/1"
+        )))
         .await?;
 
     assert!(!result.contents.is_empty());
@@ -941,9 +890,9 @@ async fn test_read_workspace_diagnostics() -> Result<(), Box<dyn std::error::Err
 
     // Test invalid buffer ID
     let result = service
-        .read_resource(ReadResourceRequestParam {
-            uri: format!("nvim-diagnostics://{connection_id}/buffer/invalid"),
-        })
+        .read_resource(read_resource_req(format!(
+            "nvim-diagnostics://{connection_id}/buffer/invalid"
+        )))
         .await;
 
     assert!(result.is_err(), "Should fail for invalid buffer ID");
@@ -977,10 +926,7 @@ async fn test_lsp_organize_imports_non_existent_file() -> Result<(), Box<dyn std
     args.insert("apply_edits".to_string(), Value::Bool(false));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_organize_imports".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req("lsp_organize_imports", Some(args)))
         .await;
     info!("Organize imports result: {:#?}", result);
 
@@ -1022,10 +968,7 @@ async fn test_lsp_organize_imports_with_lsp() -> Result<(), Box<dyn std::error::
     args.insert("apply_edits".to_string(), Value::Bool(true));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_organize_imports".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req("lsp_organize_imports", Some(args)))
         .await;
 
     assert!(
@@ -1070,10 +1013,7 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
     wait_lsp_args.insert("timeout_ms".to_string(), Value::Number(5000.into()));
 
     service
-        .call_tool(CallToolRequestParam {
-            name: "wait_for_lsp_ready".into(),
-            arguments: Some(wait_lsp_args),
-        })
+        .call_tool(call_tool_req("wait_for_lsp_ready", Some(wait_lsp_args)))
         .await?;
 
     info!("LSP client ready");
@@ -1095,10 +1035,7 @@ async fn test_lsp_organize_imports_inspect_mode() -> Result<(), Box<dyn std::err
     inspect_args.insert("apply_edits".to_string(), Value::Bool(false));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_organize_imports".into(),
-            arguments: Some(inspect_args),
-        })
+        .call_tool(call_tool_req("lsp_organize_imports", Some(inspect_args)))
         .await;
 
     assert!(
@@ -1148,10 +1085,7 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
     connect_args.insert("target".to_string(), Value::String(ipc_path));
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "connect".into(),
-            arguments: Some(connect_args),
-        })
+        .call_tool(call_tool_req("connect", Some(connect_args)))
         .await?;
 
     // Setup Lua tools configuration in Neovim
@@ -1182,10 +1116,7 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
         Value::Number(serde_json::Number::from(1)),
     );
     let tool_result = service
-        .call_tool(CallToolRequestParam {
-            name: "save_buffer".into(),
-            arguments: Some(tool_args),
-        })
+        .call_tool(call_tool_req("save_buffer", Some(tool_args)))
         .await;
 
     // The tool execution may fail (buffer not valid or no file), but it should not crash
@@ -1214,19 +1145,13 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
     );
 
     let disconnect_result = service
-        .call_tool(CallToolRequestParam {
-            name: "disconnect".into(),
-            arguments: Some(disconnect_args),
-        })
+        .call_tool(call_tool_req("disconnect", Some(disconnect_args)))
         .await?;
 
     info!("Disconnect result: {:?}", disconnect_result);
 
     let error_result = service
-        .call_tool(CallToolRequestParam {
-            name: "save_buffer".into(),
-            arguments: Some(invalid_args),
-        })
+        .call_tool(call_tool_req("save_buffer", Some(invalid_args)))
         .await;
     info!("Error handling test result: {:?}", error_result);
     assert!(
@@ -1253,10 +1178,7 @@ async fn test_cursor_position_tool() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "cursor_position".into(),
-            arguments: Some(cursor_args),
-        })
+        .call_tool(call_tool_req("cursor_position", Some(cursor_args)))
         .await?;
 
     info!("Cursor position result: {:#?}", result);
@@ -1342,10 +1264,7 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "navigate".into(),
-            arguments: Some(navigate_args),
-        })
+        .call_tool(call_tool_req("navigate", Some(navigate_args)))
         .await?;
 
     // Verify navigation result
@@ -1378,10 +1297,7 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "navigate".into(),
-            arguments: Some(invalid_navigate_args),
-        })
+        .call_tool(call_tool_req("navigate", Some(invalid_navigate_args)))
         .await;
 
     assert!(
@@ -1401,10 +1317,7 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let buffer_result = service
-        .call_tool(CallToolRequestParam {
-            name: "list_buffers".into(),
-            arguments: Some(list_buffers_args),
-        })
+        .call_tool(call_tool_req("list_buffers", Some(list_buffers_args)))
         .await?;
 
     if let Some(content) = buffer_result.content.first()
@@ -1438,10 +1351,7 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             let result = service
-                .call_tool(CallToolRequestParam {
-                    name: "navigate".into(),
-                    arguments: Some(buffer_navigate_args),
-                })
+                .call_tool(call_tool_req("navigate", Some(buffer_navigate_args)))
                 .await?;
 
             if let Some(content) = result.content.first()
@@ -1501,10 +1411,7 @@ async fn test_lsp_call_hierarchy_prepare() -> Result<(), Box<dyn std::error::Err
     ); // inside function name
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_call_hierarchy_prepare".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req("lsp_call_hierarchy_prepare", Some(args)))
         .await;
 
     info!("Call hierarchy prepare result: {:?}", result);
@@ -1566,10 +1473,10 @@ async fn test_lsp_call_hierarchy_incoming_calls() -> Result<(), Box<dyn std::err
     args.insert("item".to_string(), mock_hierarchy_item);
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_call_hierarchy_incoming_calls".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req(
+            "lsp_call_hierarchy_incoming_calls",
+            Some(args),
+        ))
         .await;
 
     info!("Call hierarchy incoming calls result: {:?}", result);
@@ -1630,10 +1537,10 @@ async fn test_lsp_call_hierarchy_outgoing_calls() -> Result<(), Box<dyn std::err
     args.insert("item".to_string(), mock_hierarchy_item);
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_call_hierarchy_outgoing_calls".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req(
+            "lsp_call_hierarchy_outgoing_calls",
+            Some(args),
+        ))
         .await;
 
     info!("Call hierarchy outgoing calls result: {:?}", result);
@@ -1692,10 +1599,7 @@ async fn test_lsp_type_hierarchy_prepare() -> Result<(), Box<dyn std::error::Err
     ); // inside interface name
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_type_hierarchy_prepare".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req("lsp_type_hierarchy_prepare", Some(args)))
         .await;
 
     info!("Type hierarchy prepare result: {:?}", result);
@@ -1757,10 +1661,7 @@ async fn test_lsp_type_hierarchy_supertypes() -> Result<(), Box<dyn std::error::
     args.insert("item".to_string(), mock_hierarchy_item);
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_type_hierarchy_supertypes".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req("lsp_type_hierarchy_supertypes", Some(args)))
         .await;
 
     info!("Type hierarchy supertypes result: {:?}", result);
@@ -1821,10 +1722,7 @@ async fn test_lsp_type_hierarchy_subtypes() -> Result<(), Box<dyn std::error::Er
     args.insert("item".to_string(), mock_hierarchy_item);
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "lsp_type_hierarchy_subtypes".into(),
-            arguments: Some(args),
-        })
+        .call_tool(call_tool_req("lsp_type_hierarchy_subtypes", Some(args)))
         .await;
 
     info!("Type hierarchy subtypes result: {:?}", result);
@@ -1870,10 +1768,7 @@ async fn test_read_project_relative_path() -> Result<(), Box<dyn std::error::Err
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_args),
-        })
+        .call_tool(call_tool_req("read", Some(read_args)))
         .await?;
 
     info!("Read project relative path result: {:#?}", result);
@@ -1910,10 +1805,7 @@ async fn test_read_project_relative_path() -> Result<(), Box<dyn std::error::Err
     read_range_args.insert("end".to_string(), Value::Number(7.into())); // Lines 5-6
 
     let range_result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_range_args),
-        })
+        .call_tool(call_tool_req("read", Some(read_range_args)))
         .await?;
 
     info!(
@@ -1974,10 +1866,7 @@ async fn test_read_absolute_path() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_args),
-        })
+        .call_tool(call_tool_req("read", Some(read_args)))
         .await?;
 
     info!("Read absolute path result: {:#?}", result);
@@ -2014,10 +1903,7 @@ async fn test_read_absolute_path() -> Result<(), Box<dyn std::error::Error>> {
     read_range_args.insert("end".to_string(), Value::Number(5.into())); // Lines 3-4
 
     let range_result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(read_range_args),
-        })
+        .call_tool(call_tool_req("read", Some(read_range_args)))
         .await?;
 
     info!("Read absolute path range result: {:#?}", range_result);
@@ -2065,10 +1951,7 @@ async fn test_read_invalid_paths() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(invalid_project_args),
-        })
+        .call_tool(call_tool_req("read", Some(invalid_project_args)))
         .await;
 
     assert!(
@@ -2099,10 +1982,7 @@ async fn test_read_invalid_paths() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let result = service
-        .call_tool(CallToolRequestParam {
-            name: "read".into(),
-            arguments: Some(invalid_absolute_args),
-        })
+        .call_tool(call_tool_req("read", Some(invalid_absolute_args)))
         .await;
 
     assert!(
