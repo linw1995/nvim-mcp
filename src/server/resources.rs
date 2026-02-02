@@ -19,6 +19,7 @@ fn new_resource(uri: &str, name: &str, description: Option<&str>) -> Resource {
             size: None,
             icons: None,
             title: None,
+            meta: None,
         },
         annotations: None,
     }
@@ -41,7 +42,7 @@ impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
     async fn list_resources(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         debug!("Listing available diagnostic resources");
@@ -85,13 +86,14 @@ impl ServerHandler for NeovimMcpServer {
         Ok(ListResourcesResult {
             resources,
             next_cursor: None,
+            meta: None,
         })
     }
 
     #[instrument(skip(self))]
     async fn read_resource(
         &self,
-        ReadResourceRequestParam { uri }: ReadResourceRequestParam,
+        ReadResourceRequestParams { uri, .. }: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         debug!("Reading resource: {}", uri);
@@ -297,7 +299,7 @@ impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
     async fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         debug!("Listing tools (static + dynamic) via HybridToolRouter");
@@ -337,6 +339,7 @@ impl ServerHandler for NeovimMcpServer {
         Ok(ListToolsResult {
             tools,
             next_cursor: None,
+            meta: None,
         })
     }
 
@@ -344,7 +347,9 @@ impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
     async fn call_tool(
         &self,
-        CallToolRequestParam { name, arguments }: CallToolRequestParam,
+        CallToolRequestParams {
+            name, arguments, ..
+        }: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         debug!("Calling tool: {} via HybridToolRouter", name);

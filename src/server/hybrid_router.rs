@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use rmcp::{
     ErrorData as McpError,
     handler::server::{router::tool::ToolRouter, tool::ToolCallContext},
-    model::{CallToolRequestParam, CallToolResult, Tool, ToolAnnotations},
+    model::{CallToolRequestParams, CallToolResult, Tool, ToolAnnotations},
     service::{RequestContext, RoleServer},
 };
 use tracing::{debug, instrument};
@@ -343,7 +343,7 @@ impl HybridToolRouter {
         debug!("Falling back to static tool: {}", tool_name);
 
         // Create ToolCallContext and delegate to static router
-        let request_param = CallToolRequestParam {
+        let request_param = CallToolRequestParams {
             name: tool_name.to_string().into(),
             arguments: Some(
                 arguments
@@ -351,6 +351,8 @@ impl HybridToolRouter {
                     .unwrap_or(&serde_json::Map::new())
                     .clone(),
             ),
+            meta: None,
+            task: None,
         };
         let tool_context = ToolCallContext::new(server, request_param, _context);
         self.static_router.call(tool_context).await
