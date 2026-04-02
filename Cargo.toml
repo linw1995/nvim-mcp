@@ -76,7 +76,7 @@ glob = "0.3"
 # Multi-connection Support
 dashmap = "6.1"
 regex = "1.12"
-blake3 = "1.5"
+blake3 = "1.8"
 
 [dev-dependencies]
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
