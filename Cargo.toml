@@ -39,7 +39,7 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 tracing-appender = "0.2"
 
 # CLI Argument Parsing
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 
 # MCP Protocol Implementation
 rmcp = { version = "0.14", features = [
