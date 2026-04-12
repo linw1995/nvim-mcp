@@ -1556,10 +1556,10 @@ impl<T> From<NvimExecuteLuaResult<T>> for Result<T, NeovimError> {
 impl NeovimClient<Connection> {
     #[instrument(skip(self))]
     pub async fn connect_path(&mut self, path: &str) -> Result<(), NeovimError> {
-        if self.connection.is_some() {
+        if let Some(conn) = &self.connection {
             return Err(NeovimError::Connection(format!(
                 "Already connected to {}. Disconnect first.",
-                self.connection.as_ref().unwrap().target()
+                conn.target()
             )));
         }
 
@@ -1593,10 +1593,10 @@ impl NeovimClient<Connection> {
 impl NeovimClient<TcpStream> {
     #[instrument(skip(self))]
     pub async fn connect_tcp(&mut self, address: &str) -> Result<(), NeovimError> {
-        if self.connection.is_some() {
+        if let Some(conn) = &self.connection {
             return Err(NeovimError::Connection(format!(
                 "Already connected to {}. Disconnect first.",
-                self.connection.as_ref().unwrap().target()
+                conn.target()
             )));
         }
 

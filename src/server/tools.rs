@@ -615,10 +615,7 @@ impl NeovimMcpServer {
         let client = self.get_connection(&connection_id)?;
         let result = client.execute_lua(&code).await?;
         let json_result = lua_tools::convert_nvim_value_to_json(result).map_err(|e| {
-            McpError::internal_error(
-                format!("Failed to convert Lua result to JSON: {}", e),
-                None,
-            )
+            McpError::internal_error(format!("Failed to convert Lua result to JSON: {}", e), None)
         })?;
         Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({ "result": json_result }),
