@@ -2,6 +2,7 @@
 
 [![codecov](https://codecov.io/gh/linw1995/nvim-mcp/graph/badge.svg?token=OFWOKQQFSD)](https://codecov.io/gh/linw1995/nvim-mcp)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/linw1995/nvim-mcp/CI.yaml)
+[![SafeSkill 92/100](https://img.shields.io/badge/SafeSkill-92%2F100_Verified%20Safe-brightgreen)](https://safeskill.dev/scan/linw1995-nvim-mcp)
 
 A Model Context Protocol (MCP) server that provides seamless integration with
 Neovim instances, enabling AI assistants to interact with your editor through
