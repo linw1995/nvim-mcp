@@ -119,7 +119,7 @@ function M.setup(opts)
     end
 
     -- PRESERVE: Existing RPC server setup
-    local pipe_path = generate_pipe_path()
+    local pipe_path = opts.pipe or generate_pipe_path()
     -- vim.notify("Using pipe path: " .. pipe_path, vim.log.levels.INFO)
 
     -- Start Neovim RPC server on the pipe
