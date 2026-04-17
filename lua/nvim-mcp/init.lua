@@ -75,6 +75,24 @@ local function get_git_root()
     return nil
 end
 
+-- Get the base directory for socket files
+-- Prefers XDG_RUNTIME_DIR (typically /run/user/<uid>, already mode 700)
+-- for security, then TMPDIR (e.g. macOS per-user temp), falls back to /tmp
+local function get_socket_dir()
+    if vim.fn.has("win32") == 1 then
+        return os.getenv("TEMP")
+    end
+    local xdg = os.getenv("XDG_RUNTIME_DIR")
+    if xdg and xdg ~= "" then
+        return xdg
+    end
+    local tmpdir = os.getenv("TMPDIR")
+    if tmpdir and tmpdir ~= "" then
+        return tmpdir
+    end
+    return "/tmp"
+end
+
 -- Generate pipe file path based on git root
 local function generate_pipe_path()
     local git_root = get_git_root()
@@ -85,9 +103,9 @@ local function generate_pipe_path()
 
     local escaped_path = escape_path(git_root)
     local pid = vim.fn.getpid()
-    local temp_dir = vim.fn.has("win32") == 1 and os.getenv("TEMP") or "/tmp"
+    local socket_dir = get_socket_dir()
 
-    return string.format("%s/nvim-mcp.%s.%d.sock", temp_dir, escaped_path, pid)
+    return string.format("%s/nvim-mcp.%s.%d.sock", socket_dir, escaped_path, pid)
 end
 
 --- Setup nvim-mcp with custom tools and configuration
