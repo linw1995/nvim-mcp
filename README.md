@@ -9,6 +9,10 @@ connections and access diagnostic information via structured resources.
 Supports both stdio and HTTP server transport modes for different integration
 scenarios.
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/linw1995-nvim-mcp).
+
 ## Features
 
 - **Multi-Connection Support**: Manage multiple concurrent Neovim instances
