@@ -204,6 +204,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // HTTP server mode
         let addr = format!("{}:{}", cli.http_host, port);
         info!("Starting HTTP server on {}", addr);
+        let mut http_config = StreamableHttpServerConfig::default();
+        http_config.stateful_mode = true;
         let service = TowerToHyperService::new(StreamableHttpService::new(
             move || {
                 Ok(NeovimMcpServer::with_connect_mode(Some(
@@ -211,10 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )))
             },
             LocalSessionManager::default().into(),
-            StreamableHttpServerConfig {
-                stateful_mode: true,
-                ..Default::default()
-            },
+            http_config,
         ));
         let listener = tokio::net::TcpListener::bind(addr).await?;
         loop {
