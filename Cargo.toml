@@ -80,7 +80,7 @@ blake3 = "1.8"
 
 [dev-dependencies]
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
-rand = "0.10.0"
+rand = "0.10.1"
 tempfile = "3.27"
 
 [build-dependencies]
