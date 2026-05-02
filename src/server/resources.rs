@@ -28,15 +28,14 @@ fn new_resource(uri: &str, name: &str, description: Option<&str>) -> Resource {
 impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: None,
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .enable_tool_list_changed()
-                .enable_resources()
-                .build(),
-            ..Default::default()
-        }
+        let mut info = ServerInfo::default();
+        info.instructions = None;
+        info.capabilities = ServerCapabilities::builder()
+            .enable_tools()
+            .enable_tool_list_changed()
+            .enable_resources()
+            .build();
+        info
     }
 
     #[instrument(skip(self))]
@@ -112,17 +111,15 @@ impl ServerHandler for NeovimMcpServer {
                     })
                     .collect();
 
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(
-                        serde_json::to_string_pretty(&connections).map_err(|e| {
-                            McpError::internal_error(
-                                "Failed to serialize connections",
-                                Some(json!({"error": e.to_string()})),
-                            )
-                        })?,
-                        uri,
-                    )],
-                })
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    serde_json::to_string_pretty(&connections).map_err(|e| {
+                        McpError::internal_error(
+                            "Failed to serialize connections",
+                            Some(json!({"error": e.to_string()})),
+                        )
+                    })?,
+                    uri,
+                )]))
             }
             "nvim-tools://" => {
                 // Overview of all tools and their connection mappings
@@ -165,17 +162,15 @@ impl ServerHandler for NeovimMcpServer {
                     "connection_specific_tools": connection_tools
                 });
 
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(
-                        serde_json::to_string_pretty(&overview).map_err(|e| {
-                            McpError::internal_error(
-                                "Failed to serialize tools overview",
-                                Some(json!({"error": e.to_string()})),
-                            )
-                        })?,
-                        uri,
-                    )],
-                })
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    serde_json::to_string_pretty(&overview).map_err(|e| {
+                        McpError::internal_error(
+                            "Failed to serialize tools overview",
+                            Some(json!({"error": e.to_string()})),
+                        )
+                    })?,
+                    uri,
+                )]))
             }
             uri if uri.starts_with("nvim-tools://") => {
                 // Handle connection-specific tool resources like "nvim-tools://{connection_id}"
@@ -212,17 +207,15 @@ impl ServerHandler for NeovimMcpServer {
                     "dynamic_count": self.hybrid_router.get_connection_tool_count(connection_id)
                 });
 
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(
-                        serde_json::to_string_pretty(&result).map_err(|e| {
-                            McpError::internal_error(
-                                "Failed to serialize connection tools",
-                                Some(json!({"error": e.to_string()})),
-                            )
-                        })?,
-                        uri,
-                    )],
-                })
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    serde_json::to_string_pretty(&result).map_err(|e| {
+                        McpError::internal_error(
+                            "Failed to serialize connection tools",
+                            Some(json!({"error": e.to_string()})),
+                        )
+                    })?,
+                    uri,
+                )]))
             }
             uri if uri.starts_with("nvim-diagnostics://") => {
                 // Parse connection_id from URI pattern using regex
@@ -243,17 +236,15 @@ impl ServerHandler for NeovimMcpServer {
                     match resource_type {
                         "workspace" => {
                             let diagnostics = client.get_workspace_diagnostics().await?;
-                            Ok(ReadResourceResult {
-                                contents: vec![ResourceContents::text(
-                                    serde_json::to_string_pretty(&diagnostics).map_err(|e| {
-                                        McpError::internal_error(
-                                            "Failed to serialize workspace diagnostics",
-                                            Some(json!({"error": e.to_string()})),
-                                        )
-                                    })?,
-                                    uri,
-                                )],
-                            })
+                            Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                                serde_json::to_string_pretty(&diagnostics).map_err(|e| {
+                                    McpError::internal_error(
+                                        "Failed to serialize workspace diagnostics",
+                                        Some(json!({"error": e.to_string()})),
+                                    )
+                                })?,
+                                uri,
+                            )]))
                         }
                         path if path.starts_with("buffer/") => {
                             let buffer_id = path
@@ -264,17 +255,15 @@ impl ServerHandler for NeovimMcpServer {
                                 })?;
 
                             let diagnostics = client.get_buffer_diagnostics(buffer_id).await?;
-                            Ok(ReadResourceResult {
-                                contents: vec![ResourceContents::text(
-                                    serde_json::to_string_pretty(&diagnostics).map_err(|e| {
-                                        McpError::internal_error(
-                                            "Failed to serialize buffer diagnostics",
-                                            Some(json!({"error": e.to_string()})),
-                                        )
-                                    })?,
-                                    uri,
-                                )],
-                            })
+                            Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                                serde_json::to_string_pretty(&diagnostics).map_err(|e| {
+                                    McpError::internal_error(
+                                        "Failed to serialize buffer diagnostics",
+                                        Some(json!({"error": e.to_string()})),
+                                    )
+                                })?,
+                                uri,
+                            )]))
                         }
                         _ => Err(McpError::resource_not_found(
                             "resource_not_found",
