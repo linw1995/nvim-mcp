@@ -60,13 +60,10 @@ impl From<&dyn DynamicTool> for Tool {
             required.push(serde_json::json!("connection_id"));
         }
         let mut tool = Tool::new(val.name().to_owned(), val.description().to_owned(), schema);
-        tool.annotations = Some(ToolAnnotations {
-            title: Some(format!("Dynamic: {}", val.name())),
-            read_only_hint: None,
-            destructive_hint: None,
-            idempotent_hint: None,
-            open_world_hint: None,
-        });
+        tool.annotations = Some(ToolAnnotations::with_title(format!(
+            "Dynamic: {}",
+            val.name()
+        )));
         tool
     }
 }
@@ -343,17 +340,12 @@ impl HybridToolRouter {
         debug!("Falling back to static tool: {}", tool_name);
 
         // Create ToolCallContext and delegate to static router
-        let request_param = CallToolRequestParams {
-            name: tool_name.to_string().into(),
-            arguments: Some(
-                arguments
-                    .as_object()
-                    .unwrap_or(&serde_json::Map::new())
-                    .clone(),
-            ),
-            meta: None,
-            task: None,
-        };
+        let request_param = CallToolRequestParams::new(tool_name.to_string()).with_arguments(
+            arguments
+                .as_object()
+                .unwrap_or(&serde_json::Map::new())
+                .clone(),
+        );
         let tool_context = ToolCallContext::new(server, request_param, _context);
         self.static_router.call(tool_context).await
     }

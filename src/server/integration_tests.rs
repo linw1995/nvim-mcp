@@ -16,21 +16,18 @@ fn call_tool_req(
     name: impl Into<String>,
     arguments: Option<Map<String, Value>>,
 ) -> CallToolRequestParams {
-    CallToolRequestParams {
-        name: name.into().into(),
-        arguments,
-        meta: None,
-        task: None,
+    let req = CallToolRequestParams::new(name.into());
+    if let Some(arguments) = arguments {
+        req.with_arguments(arguments)
+    } else {
+        req
     }
 }
 
 /// Helper function to create ReadResourceRequestParams with only required fields.
 /// Other fields use default values to avoid API breakage when rmcp adds new fields.
 fn read_resource_req(uri: impl Into<String>) -> ReadResourceRequestParams {
-    ReadResourceRequestParams {
-        uri: uri.into(),
-        meta: None,
-    }
+    ReadResourceRequestParams::new(uri.into())
 }
 
 // Macro to create an MCP service using the pre-compiled binary
