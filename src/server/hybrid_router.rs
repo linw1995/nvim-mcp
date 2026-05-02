@@ -60,7 +60,10 @@ impl From<&dyn DynamicTool> for Tool {
             required.push(serde_json::json!("connection_id"));
         }
         let mut tool = Tool::new(val.name().to_owned(), val.description().to_owned(), schema);
-        tool.annotations = Some(ToolAnnotations::with_title(format!("Dynamic: {}", val.name())));
+        tool.annotations = Some(ToolAnnotations::with_title(format!(
+            "Dynamic: {}",
+            val.name()
+        )));
         tool
     }
 }
