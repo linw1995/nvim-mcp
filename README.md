@@ -30,8 +30,82 @@ cargo install nvim-mcp
 
 ### Using Nix
 
+This repository is a flake that exposes the server as its default
+package and app.
+
+Run it directly, without installing anything:
+
 ```bash
-nix profile install github:linw1995/nvim-mcp#nvim-mcp
+nix run github:linw1995/nvim-mcp -- --version
+```
+
+Or install it imperatively into your profile:
+
+```bash
+nix profile install github:linw1995/nvim-mcp
+```
+
+#### Declarative setup with home-manager
+
+The snippet below installs the Neovim plugin and the server binary,
+then registers it with Claude Code declaratively. No `cargo install`
+build step and no manual `claude mcp add`:
+
+```nix
+# flake.nix
+inputs.nvim-mcp.url = "github:linw1995/nvim-mcp";
+```
+
+```nix
+# home-manager module (inputs must be in scope)
+{ pkgs, lib, inputs, ... }:
+let
+  nvim-mcp = inputs.nvim-mcp.packages.${pkgs.system}.default;
+in
+{
+  programs.neovim = {
+    enable = true;
+    plugins = [
+      (pkgs.vimUtils.buildVimPlugin {
+        pname = "nvim-mcp";
+        version = inputs.nvim-mcp.shortRev or "unstable";
+        src = inputs.nvim-mcp;
+      })
+    ];
+    extraLuaConfig = ''require("nvim-mcp").setup({})'';
+  };
+
+  # Requires home-manager's programs.claude-code module.
+  programs.claude-code = {
+    enable = true;
+    mcpServers.nvim = {
+      type = "stdio";
+      command = lib.getExe nvim-mcp;
+      args = [ "--connect" "auto" ];
+    };
+  };
+}
+```
+
+This registers the `nvim` MCP server for every project, so you can skip
+the manual `claude mcp add` step below.
+
+**Tip:** git spawns throwaway Neovim instances to edit commit, merge and
+rebase messages. If those load your full config they each call `setup()`
+and register an extra socket in the same git root. Guard the call so
+exactly one socket exists per repository:
+
+```lua
+local transient = false
+for _, arg in ipairs(vim.fn.argv()) do
+  if arg:match("COMMIT_EDITMSG$") or arg:match("MERGE_MSG$")
+    or arg:match("git%-rebase%-todo$") or arg:match("TAG_EDITMSG$") then
+    transient = true
+  end
+end
+if not transient then
+  require("nvim-mcp").setup({})
+end
 ```
 
 ### From Source
