@@ -113,10 +113,7 @@ fn extract_connection_id(
 ) -> Result<String, Box<dyn std::error::Error>> {
     if let Some(content) = result.content.first() {
         // The content should be JSON
-        let json_str = match &content.raw {
-            rmcp::model::RawContent::Text(text_content) => &text_content.text,
-            _ => return Err("Expected text content".into()),
-        };
+        let json_str = &content.as_text().ok_or("Expected text content")?.text;
 
         // Parse JSON
         let json_value: serde_json::Value = serde_json::from_str(json_str)?;
@@ -682,9 +679,15 @@ async fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
     assert!(result.is_err(), "Should fail to connect to invalid address");
 
     // Test calling tools with missing arguments
-    let result = service.call_tool(call_tool_req("connect_tcp", None)).await;
+    let result = service
+        .call_tool(call_tool_req("connect_tcp", None))
+        .await?;
 
-    assert!(result.is_err(), "Should fail when arguments are missing");
+    assert_eq!(
+        result.is_error,
+        Some(true),
+        "Missing arguments should return a tool-level error"
+    );
 
     // Test calling non-existent tool
     let result = service
@@ -823,7 +826,7 @@ async fn test_list_diagnostic_resources() -> Result<(), Box<dyn std::error::Erro
     let connections_resource = result
         .resources
         .iter()
-        .find(|r| r.raw.uri == "nvim-connections://");
+        .find(|r| r.uri == "nvim-connections://");
 
     assert!(
         connections_resource.is_some(),
@@ -831,9 +834,9 @@ async fn test_list_diagnostic_resources() -> Result<(), Box<dyn std::error::Erro
     );
 
     if let Some(resource) = connections_resource {
-        assert_eq!(resource.raw.name, "Active Neovim Connections");
-        assert!(resource.raw.description.is_some());
-        assert_eq!(resource.raw.mime_type, Some("application/json".to_string()));
+        assert_eq!(resource.name, "Active Neovim Connections");
+        assert!(resource.description.is_some());
+        assert_eq!(resource.mime_type, Some("application/json".to_string()));
     }
 
     service.cancel().await?;
@@ -1267,7 +1270,7 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
     // Verify navigation result
     assert!(!result.content.is_empty());
     if let Some(content) = result.content.first()
-        && let rmcp::model::RawContent::Text(text_content) = &content.raw
+        && let Some(text_content) = content.as_text()
     {
         let navigate_data: serde_json::Value = serde_json::from_str(&text_content.text)?;
 
@@ -1292,6 +1295,8 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
             "absolute_path": "/non/existent/file.txt"
         }),
     );
+    invalid_navigate_args.insert("line".to_string(), Value::Number(0.into()));
+    invalid_navigate_args.insert("character".to_string(), Value::Number(0.into()));
 
     let result = service
         .call_tool(call_tool_req("navigate", Some(invalid_navigate_args)))
@@ -1318,7 +1323,7 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     if let Some(content) = buffer_result.content.first()
-        && let rmcp::model::RawContent::Text(text_content) = &content.raw
+        && let Some(text_content) = content.as_text()
     {
         let buffers_data: serde_json::Value = serde_json::from_str(&text_content.text)?;
 
@@ -1352,7 +1357,7 @@ async fn test_navigate_tool() -> Result<(), Box<dyn std::error::Error>> {
                 .await?;
 
             if let Some(content) = result.content.first()
-                && let rmcp::model::RawContent::Text(text_content) = &content.raw
+                && let Some(text_content) = content.as_text()
             {
                 let navigate_data: serde_json::Value = serde_json::from_str(&text_content.text)?;
                 assert!(
