@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rmcp::{
     ErrorData as McpError,
-    model::{CallToolResult, ContentBlock},
+    model::{CallToolResult, ContentBlock as Content},
 };
 use tracing::{debug, info, instrument, warn};
 
@@ -324,7 +324,7 @@ fn convert_lua_response_to_mcp(lua_result: serde_json::Value) -> Result<CallTool
     let content = lua_response
         .content
         .into_iter()
-        .map(|c| ContentBlock::text(c.text))
+        .map(|c| Content::text(c.text))
         .collect();
 
     Ok(CallToolResult::success(content))

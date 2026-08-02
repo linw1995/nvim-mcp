@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rmcp::model::ContentBlock as Content;
 use rmcp::{
     ErrorData as McpError, RoleServer,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -501,7 +502,7 @@ impl NeovimMcpServer {
             ));
         }
 
-        Ok(CallToolResult::success(vec![ContentBlock::json(targets)?]))
+        Ok(CallToolResult::success(vec![Content::json(targets)?]))
     }
 
     #[tool]
@@ -524,7 +525,7 @@ impl NeovimMcpServer {
         self.setup_new_client(&connection_id, Box::new(client), &ctx)
             .await?;
 
-        Ok(CallToolResult::success(vec![ContentBlock::json(
+        Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "connection_id": connection_id,
             }),
@@ -551,7 +552,7 @@ impl NeovimMcpServer {
         self.setup_new_client(&connection_id, Box::new(client), &ctx)
             .await?;
 
-        Ok(CallToolResult::success(vec![ContentBlock::json(
+        Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "connection_id": connection_id,
             }),
@@ -578,7 +579,7 @@ impl NeovimMcpServer {
                     None,
                 ));
             }
-            Ok(CallToolResult::success(vec![ContentBlock::json(
+            Ok(CallToolResult::success(vec![Content::json(
                 serde_json::json!({
                     "connection_id": connection_id,
                     "target": target,
@@ -600,7 +601,7 @@ impl NeovimMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let buffers = client.get_buffers().await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(buffers)?]))
+        Ok(CallToolResult::success(vec![Content::json(buffers)?]))
     }
 
     #[tool(description = "Execute Lua code")]
@@ -617,7 +618,7 @@ impl NeovimMcpServer {
         let json_result = lua_tools::convert_nvim_value_to_json(result).map_err(|e| {
             McpError::internal_error(format!("Failed to convert Lua result to JSON: {}", e), None)
         })?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
+        Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({ "result": json_result }),
         )?]))
     }
@@ -636,7 +637,7 @@ impl NeovimMcpServer {
         client
             .wait_for_lsp_ready(client_name.as_deref(), timeout_ms)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
+        Ok(CallToolResult::success(vec![Content::json(
             serde_json::json!({
                 "message": "LSP client ready",
                 "client_name": client_name.unwrap_or_else(|| "any".to_string()),
@@ -658,9 +659,7 @@ impl NeovimMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let text_content = client.read_document(document, start, end).await?;
-        Ok(CallToolResult::success(vec![ContentBlock::text(
-            text_content,
-        )]))
+        Ok(CallToolResult::success(vec![Content::text(text_content)]))
     }
 
     #[tool]
@@ -671,9 +670,7 @@ impl NeovimMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let diagnostics = client.get_buffer_diagnostics(id).await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
-            diagnostics,
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(diagnostics)?]))
     }
 
     #[tool(description = "Get workspace LSP clients")]
@@ -684,9 +681,7 @@ impl NeovimMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let lsp_clients = client.lsp_get_clients().await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
-            lsp_clients,
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(lsp_clients)?]))
     }
 
     #[tool(description = "Search workspace symbols by query")]
@@ -703,7 +698,7 @@ impl NeovimMcpServer {
         let symbols = client
             .lsp_workspace_symbols(&lsp_client_name, &query)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(symbols)?]))
+        Ok(CallToolResult::success(vec![Content::json(symbols)?]))
     }
 
     #[tool(description = "Get LSP code actions")]
@@ -734,9 +729,7 @@ impl NeovimMcpServer {
         let code_actions = client
             .lsp_get_code_actions(&lsp_client_name, document, range)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
-            code_actions,
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(code_actions)?]))
     }
 
     #[tool(description = "Get LSP hover information")]
@@ -754,7 +747,7 @@ impl NeovimMcpServer {
         let hover = client
             .lsp_hover(&lsp_client_name, document, position)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(hover)?]))
+        Ok(CallToolResult::success(vec![Content::json(hover)?]))
     }
 
     #[tool(description = "Get document symbols")]
@@ -771,7 +764,7 @@ impl NeovimMcpServer {
         let symbols = client
             .lsp_document_symbols(&lsp_client_name, document)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(symbols)?]))
+        Ok(CallToolResult::success(vec![Content::json(symbols)?]))
     }
 
     #[tool(description = "Get LSP references")]
@@ -790,9 +783,7 @@ impl NeovimMcpServer {
         let references = client
             .lsp_references(&lsp_client_name, document, position, include_declaration)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
-            references,
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(references)?]))
     }
 
     #[tool(description = "Get LSP definition")]
@@ -810,9 +801,7 @@ impl NeovimMcpServer {
         let definition = client
             .lsp_definition(&lsp_client_name, document, position)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
-            definition,
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(definition)?]))
     }
 
     #[tool(description = "Get LSP type definition")]
@@ -830,7 +819,7 @@ impl NeovimMcpServer {
         let type_definition = client
             .lsp_type_definition(&lsp_client_name, document, position)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
+        Ok(CallToolResult::success(vec![Content::json(
             type_definition,
         )?]))
     }
@@ -850,7 +839,7 @@ impl NeovimMcpServer {
         let implementation = client
             .lsp_implementation(&lsp_client_name, document, position)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
+        Ok(CallToolResult::success(vec![Content::json(
             implementation,
         )?]))
     }
@@ -870,9 +859,7 @@ impl NeovimMcpServer {
         let declaration = client
             .lsp_declaration(&lsp_client_name, document, position)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
-            declaration,
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(declaration)?]))
     }
 
     #[tool(description = "Resolve a code action that may have incomplete data")]
@@ -889,7 +876,7 @@ impl NeovimMcpServer {
         let resolved_action = client
             .lsp_resolve_code_action(&lsp_client_name, code_action)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(
+        Ok(CallToolResult::success(vec![Content::json(
             resolved_action,
         )?]))
     }
@@ -908,7 +895,7 @@ impl NeovimMcpServer {
         client
             .lsp_apply_workspace_edit(&lsp_client_name, workspace_edit)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::text("success")]))
+        Ok(CallToolResult::success(vec![Content::text("success")]))
     }
 
     #[tool(description = "Rename symbol across workspace using LSP with optional validation")]
@@ -972,7 +959,7 @@ impl NeovimMcpServer {
             client
                 .lsp_apply_workspace_edit(&lsp_client_name, edit)
                 .await?;
-            Ok(CallToolResult::success(vec![ContentBlock::text(
+            Ok(CallToolResult::success(vec![Content::text(
                 "Rename completed successfully",
             )]))
         } else {
@@ -1005,14 +992,12 @@ impl NeovimMcpServer {
             client
                 .lsp_apply_text_edits(&lsp_client_name, document, text_edits)
                 .await?;
-            Ok(CallToolResult::success(vec![ContentBlock::text(
+            Ok(CallToolResult::success(vec![Content::text(
                 "Formatting applied successfully",
             )]))
         } else {
             // Return the text edits for inspection
-            Ok(CallToolResult::success(vec![ContentBlock::json(
-                text_edits,
-            )?]))
+            Ok(CallToolResult::success(vec![Content::json(text_edits)?]))
         }
     }
 
@@ -1054,14 +1039,12 @@ impl NeovimMcpServer {
             client
                 .lsp_apply_text_edits(&lsp_client_name, document, text_edits)
                 .await?;
-            Ok(CallToolResult::success(vec![ContentBlock::text(
+            Ok(CallToolResult::success(vec![Content::text(
                 "Range formatting applied successfully",
             )]))
         } else {
             // Return the text edits for inspection
-            Ok(CallToolResult::success(vec![ContentBlock::json(
-                text_edits,
-            )?]))
+            Ok(CallToolResult::success(vec![Content::json(text_edits)?]))
         }
     }
 
@@ -1084,16 +1067,14 @@ impl NeovimMcpServer {
             .await?;
 
         if code_actions.is_empty() {
-            return Ok(CallToolResult::success(vec![ContentBlock::text(
+            return Ok(CallToolResult::success(vec![Content::text(
                 "No organize imports actions available for this document",
             )]));
         }
 
         if !apply_edits {
             // Return the code actions for inspection
-            return Ok(CallToolResult::success(vec![ContentBlock::json(
-                code_actions,
-            )?]));
+            return Ok(CallToolResult::success(vec![Content::json(code_actions)?]));
         }
 
         // Apply the first/preferred organize imports action
@@ -1113,7 +1094,7 @@ impl NeovimMcpServer {
             client
                 .lsp_apply_workspace_edit(&lsp_client_name, edit.clone())
                 .await?;
-            Ok(CallToolResult::success(vec![ContentBlock::text(
+            Ok(CallToolResult::success(vec![Content::text(
                 "Imports organized successfully",
             )]))
         } else {
@@ -1144,9 +1125,7 @@ impl NeovimMcpServer {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![ContentBlock::json(
-            json_result,
-        )?]))
+        Ok(CallToolResult::success(vec![Content::json(json_result)?]))
     }
 
     #[tool(
@@ -1163,7 +1142,7 @@ impl NeovimMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let client = self.get_connection(&connection_id)?;
         let result = client.navigate(document, position).await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 
     #[tool(description = "Prepare call hierarchy for a symbol at a specific position")]
@@ -1181,7 +1160,7 @@ impl NeovimMcpServer {
         let result = client
             .lsp_call_hierarchy_prepare(&lsp_client_name, document, position)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 
     #[tool(description = "Get incoming calls for a call hierarchy item")]
@@ -1198,7 +1177,7 @@ impl NeovimMcpServer {
         let result = client
             .lsp_call_hierarchy_incoming_calls(&lsp_client_name, item)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 
     #[tool(description = "Get outgoing calls for a call hierarchy item")]
@@ -1215,7 +1194,7 @@ impl NeovimMcpServer {
         let result = client
             .lsp_call_hierarchy_outgoing_calls(&lsp_client_name, item)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 
     #[tool(description = "Prepare type hierarchy for a symbol at a specific position")]
@@ -1233,7 +1212,7 @@ impl NeovimMcpServer {
         let result = client
             .lsp_type_hierarchy_prepare(&lsp_client_name, document, position)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 
     #[tool(description = "Get supertypes for a type hierarchy item")]
@@ -1250,7 +1229,7 @@ impl NeovimMcpServer {
         let result = client
             .lsp_type_hierarchy_supertypes(&lsp_client_name, item)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 
     #[tool(description = "Get subtypes for a type hierarchy item")]
@@ -1267,7 +1246,7 @@ impl NeovimMcpServer {
         let result = client
             .lsp_type_hierarchy_subtypes(&lsp_client_name, item)
             .await?;
-        Ok(CallToolResult::success(vec![ContentBlock::json(result)?]))
+        Ok(CallToolResult::success(vec![Content::json(result)?]))
     }
 }
 
