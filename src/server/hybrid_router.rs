@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use rmcp::{
     ErrorData as McpError,
     handler::server::{router::tool::ToolRouter, tool::ToolCallContext},
-    model::{CallToolRequestParams, CallToolResult, Tool, ToolAnnotations},
+    model::{CallToolRequestParams, CallToolResponse, CallToolResult, Tool, ToolAnnotations},
     service::{RequestContext, RoleServer},
 };
 use tracing::{debug, instrument};
@@ -292,7 +292,7 @@ impl HybridToolRouter {
         tool_name: &str,
         arguments: serde_json::Value,
         _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResponse, McpError> {
         debug!("HybridToolRouter dispatching tool: {}", tool_name);
 
         // 1. Try dynamic tools first (higher priority)
@@ -324,7 +324,7 @@ impl HybridToolRouter {
                 // Validate input arguments before execution
                 dynamic_tool.validate_input(&arguments)?;
 
-                return dynamic_tool.call(client, arguments).await;
+                return dynamic_tool.call(client, arguments).await.map(Into::into);
             } else {
                 return Err(McpError::invalid_request(
                     format!(

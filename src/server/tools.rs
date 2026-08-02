@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rmcp::model::ContentBlock as Content;
 use rmcp::{
     ErrorData as McpError, RoleServer,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},

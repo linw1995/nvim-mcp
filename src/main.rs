@@ -205,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let addr = format!("{}:{}", cli.http_host, port);
         info!("Starting HTTP server on {}", addr);
         let mut http_config = StreamableHttpServerConfig::default();
-        http_config.stateful_mode = true;
+        http_config.legacy_session_mode = true;
         let service = TowerToHyperService::new(StreamableHttpService::new(
             move || {
                 Ok(NeovimMcpServer::with_connect_mode(Some(

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rmcp::{
     ErrorData as McpError,
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock as Content},
 };
 use tracing::{debug, info, instrument, warn};
 

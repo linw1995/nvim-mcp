@@ -10,18 +10,11 @@ use tracing::{debug, info, instrument};
 use super::core::NeovimMcpServer;
 
 fn new_resource(uri: &str, name: &str, description: Option<&str>) -> Resource {
-    Resource {
-        raw: RawResource {
-            uri: uri.to_string(),
-            name: name.to_string(),
-            description: description.map(|s| s.to_string()),
-            mime_type: Some("application/json".to_string()),
-            size: None,
-            icons: None,
-            title: None,
-            meta: None,
-        },
-        annotations: None,
+    let resource = Resource::new(uri, name).with_mime_type("application/json");
+    if let Some(description) = description {
+        resource.with_description(description)
+    } else {
+        resource
     }
 }
 // Manual ServerHandler implementation to override tool methods
@@ -82,11 +75,7 @@ impl ServerHandler for NeovimMcpServer {
             ));
         }
 
-        Ok(ListResourcesResult {
-            resources,
-            next_cursor: None,
-            meta: None,
-        })
+        Ok(ListResourcesResult::with_all_items(resources))
     }
 
     #[instrument(skip(self))]
@@ -94,10 +83,10 @@ impl ServerHandler for NeovimMcpServer {
         &self,
         ReadResourceRequestParams { uri, .. }: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResponse, McpError> {
         debug!("Reading resource: {}", uri);
 
-        match uri.as_str() {
+        let result: Result<ReadResourceResult, McpError> = match uri.as_str() {
             "nvim-connections://" => {
                 let connections: Vec<_> = self
                     .nvim_clients
@@ -281,7 +270,9 @@ impl ServerHandler for NeovimMcpServer {
                 "resource_not_found",
                 Some(json!({"uri": uri})),
             )),
-        }
+        };
+
+        result.map(Into::into)
     }
 
     // Override list_tools to use HybridToolRouter
@@ -325,11 +316,7 @@ impl ServerHandler for NeovimMcpServer {
             });
         }
 
-        Ok(ListToolsResult {
-            tools,
-            next_cursor: None,
-            meta: None,
-        })
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
     // Override call_tool to use HybridToolRouter
@@ -340,7 +327,7 @@ impl ServerHandler for NeovimMcpServer {
             name, arguments, ..
         }: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResponse, McpError> {
         debug!("Calling tool: {} via HybridToolRouter", name);
 
         // Convert arguments to serde_json::Value
