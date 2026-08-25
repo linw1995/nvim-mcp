@@ -109,6 +109,11 @@ struct Cli {
     /// Connection mode: 'manual', 'auto', or specific target (TCP address/socket path)
     #[arg(long, default_value = "manual")]
     connect: ConnectBehavior,
+
+    /// Advertise connection-aware tools even when no Neovim instance is connected.
+    /// Use this for MCP clients that do not handle tool-list change notifications.
+    #[arg(long)]
+    always_expose_connection_tools: bool,
 }
 
 #[tokio::main]
@@ -152,7 +157,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting nvim-mcp Neovim server");
     let connect_mode = cli.connect.to_string();
-    let server = NeovimMcpServer::with_connect_mode(Some(connect_mode.clone()));
+    let always_expose_connection_tools = cli.always_expose_connection_tools;
+    let server = NeovimMcpServer::with_connect_mode(Some(connect_mode.clone()))
+        .with_always_expose_connection_tools(always_expose_connection_tools);
 
     // Handle connection mode
     let connection_ids = match cli.connect {
@@ -208,9 +215,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http_config.legacy_session_mode = true;
         let service = TowerToHyperService::new(StreamableHttpService::new(
             move || {
-                Ok(NeovimMcpServer::with_connect_mode(Some(
-                    connect_mode.clone(),
-                )))
+                Ok(
+                    NeovimMcpServer::with_connect_mode(Some(connect_mode.clone()))
+                        .with_always_expose_connection_tools(always_expose_connection_tools),
+                )
             },
             LocalSessionManager::default().into(),
             http_config,

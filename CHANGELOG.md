@@ -10,6 +10,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### New Features
+
+- Add `--always-expose-connection-tools` compatibility mode for MCP clients
+  that do not refresh tools after `notifications/tools/list_changed`.
+
 ## v0.7.2 - 2025-12-03
 
 ### Fixed

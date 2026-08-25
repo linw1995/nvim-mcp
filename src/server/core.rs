@@ -30,6 +30,7 @@ pub struct NeovimMcpServer {
     pub nvim_clients: Arc<DashMap<String, Box<dyn NeovimClientTrait + Send>>>,
     pub hybrid_router: HybridToolRouter,
     pub connect_mode: Option<String>,
+    pub(crate) always_expose_connection_tools: bool,
 }
 
 impl NeovimMcpServer {
@@ -45,7 +46,13 @@ impl NeovimMcpServer {
             nvim_clients: Arc::new(DashMap::new()),
             hybrid_router: HybridToolRouter::new(static_router, static_tool_descriptions),
             connect_mode,
+            always_expose_connection_tools: false,
         }
+    }
+
+    pub fn with_always_expose_connection_tools(mut self, enabled: bool) -> Self {
+        self.always_expose_connection_tools = enabled;
+        self
     }
 
     pub fn router(&self) -> &HybridToolRouter {

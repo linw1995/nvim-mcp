@@ -58,6 +58,9 @@ claude mcp add -s local nvim -- nvim-mcp --log-file . \
 # Start as stdio MCP server (default, manual connection mode)
 nvim-mcp
 
+# Keep connection-aware tools visible for clients that cannot refresh tool lists
+nvim-mcp --always-expose-connection-tools
+
 # Auto-connect to current project Neovim instances
 nvim-mcp --connect auto
 
@@ -81,6 +84,10 @@ nvim-mcp --http-port 8080 --http-host 0.0.0.0
   - `manual`: Traditional workflow using get_targets and connect tools
   - `auto`: Automatically connect to all project-associated Neovim instances
   - Specific target: TCP address (e.g., `127.0.0.1:6666`) or absolute socket path
+- `--always-expose-connection-tools`: Advertise connection-aware tools before a
+  Neovim connection exists. Use this compatibility mode for MCP clients that do
+  not handle `notifications/tools/list_changed`; calls still require a valid
+  `connection_id`.
 - `--log-file <PATH>`: Path to log file (defaults to stderr)
 - `--log-level <LEVEL>`: Log level (trace, debug, info, warn, error;
   defaults to info)
