@@ -204,6 +204,8 @@ async fn test_list_tools() -> Result<(), Box<dyn std::error::Error>> {
     assert!(tool_names.contains(&"get_targets"));
     assert!(tool_names.contains(&"connect"));
     assert!(tool_names.contains(&"connect_tcp"));
+    assert!(!tool_names.contains(&"list_buffers"));
+    assert!(!tool_names.contains(&"lsp_hover"));
 
     // Verify tool descriptions are present
     for tool in &tools.tools {
@@ -213,6 +215,25 @@ async fn test_list_tools() -> Result<(), Box<dyn std::error::Error>> {
 
     service.cancel().await?;
     info!("List tools test completed successfully");
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_always_expose_connection_tools() -> Result<(), Box<dyn std::error::Error>> {
+    let command = Command::new(get_compiled_binary()).configure(|cmd| {
+        cmd.args(["--connect", "manual", "--always-expose-connection-tools"]);
+    });
+    let service = ().serve(TokioChildProcess::new(command)?).await?;
+
+    let tools = service.list_tools(Default::default()).await?;
+    let tool_names: Vec<&str> = tools.tools.iter().map(|tool| tool.name.as_ref()).collect();
+
+    assert!(tool_names.contains(&"list_buffers"));
+    assert!(tool_names.contains(&"lsp_hover"));
+
+    service.cancel().await?;
 
     Ok(())
 }

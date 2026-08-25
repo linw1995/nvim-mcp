@@ -299,8 +299,8 @@ impl ServerHandler for NeovimMcpServer {
             }
         }
 
-        if self.nvim_clients.is_empty() {
-            info!("filter out the connection-awared tools if no connections");
+        if self.nvim_clients.is_empty() && !self.always_expose_connection_tools {
+            info!("filter out connection-aware tools if no connections");
             tools.retain(|tool| {
                 !tool
                     .input_schema
