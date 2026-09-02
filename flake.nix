@@ -60,7 +60,21 @@
                 GIT_DIRTY = git_dirty;
                 SOURCE_DATE_EPOCH = git_last_modified;
               };
-              cargoLock = {lockFile = ./Cargo.lock;};
+              cargoDeps =
+                (rustPlatform.importCargoLock.override {
+                  # Use the official CDN directly while preserving lockfile checksums.
+                  fetchurl = args:
+                    pkgs.fetchurl (args
+                      // {
+                        url =
+                          builtins.replaceStrings
+                          ["https://crates.io/api/v1/crates/"]
+                          ["https://static.crates.io/crates/"]
+                          args.url;
+                      });
+                }) {
+                  lockFile = ./Cargo.lock;
+                };
               checkFlags = [
                 "--skip=integration_tests"
               ];
