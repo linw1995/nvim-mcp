@@ -103,18 +103,13 @@ local function generate_pipe_path()
 
     local project_id = escape_path(git_root)
     if vim.fn.has("win32") == 0 then
-        project_id = vim.fn.sha256(git_root):sub(1, 32)
+        project_id = vim.fn.sha256(git_root):sub(1, 16)
     end
     local pid = vim.fn.getpid()
     local socket_dir = get_socket_dir()
 
     local filename = string.format("nvim-mcp.%s.%d.sock", project_id, pid)
-    local pipe_path = socket_dir:gsub("/+$", "") .. "/" .. filename
-    -- Leave room for the terminating NUL in macOS sun_path[104].
-    if vim.fn.has("win32") == 0 and #pipe_path > 103 then
-        pipe_path = "/tmp/" .. filename
-    end
-    return pipe_path
+    return socket_dir:gsub("/+$", "") .. "/" .. filename
 end
 
 --- Setup nvim-mcp with custom tools and configuration

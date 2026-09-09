@@ -1,4 +1,5 @@
 vim.opt.runtimepath:append(vim.env.NVIM_MCP_ROOT)
+assert(#vim.env.NVIM_MCP_EXPECTED_ID == 16, "Project ID must contain 16 hex characters")
 require("nvim-mcp").setup()
 local expected = string.format(
     "%s/nvim-mcp.%s.%d.sock",

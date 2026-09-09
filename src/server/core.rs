@@ -307,9 +307,9 @@ fn escape_path(path: &str) -> String {
     path.trim().replace("/", "%")
 }
 
-/// Matches the first 128 bits of vim.fn.sha256 in the Lua plugin.
+/// Matches the first 64 bits of vim.fn.sha256 in the Lua plugin.
 fn project_socket_id(project_root: &str) -> String {
-    format!("{:x}", Sha256::digest(project_root.as_bytes()))[..32].to_string()
+    format!("{:x}", Sha256::digest(project_root.as_bytes()))[..16].to_string()
 }
 
 /// Find both current and legacy socket names during plugin upgrades.
@@ -461,8 +461,11 @@ mod socket_tests {
             .prefix("nvim-mcp-")
             .tempdir_in("/tmp")
             .unwrap();
-        let long_runtime = runtime.path().join("runtime-".repeat(14));
-        std::fs::create_dir(&long_runtime).unwrap();
+        // Match the length of a typical macOS /var/folders temporary directory.
+        let mac_runtime = runtime
+            .path()
+            .join("r".repeat(48 - runtime.path().as_os_str().len() - 1));
+        std::fs::create_dir(&mac_runtime).unwrap();
         let project = project.canonicalize().unwrap();
         let project_id = project_socket_id(project.to_str().unwrap());
         for in_git in [false, true] {
@@ -480,16 +483,16 @@ mod socket_tests {
                 project.clone()
             };
             for (xdg, tmp, expected_dir) in [
-                (runtime.path(), long_runtime.as_path(), runtime.path()),
-                (std::path::Path::new(""), runtime.path(), runtime.path()),
-                (
-                    long_runtime.as_path(),
-                    runtime.path(),
-                    std::path::Path::new("/tmp"),
-                ),
+                (runtime.path(), mac_runtime.as_path(), runtime.path()),
                 (
                     std::path::Path::new(""),
-                    long_runtime.as_path(),
+                    mac_runtime.as_path(),
+                    mac_runtime.as_path(),
+                ),
+                (mac_runtime.as_path(), runtime.path(), mac_runtime.as_path()),
+                (
+                    std::path::Path::new(""),
+                    std::path::Path::new(""),
                     std::path::Path::new("/tmp"),
                 ),
             ] {
