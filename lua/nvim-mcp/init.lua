@@ -101,11 +101,15 @@ local function generate_pipe_path()
         git_root = vim.fn.getcwd()
     end
 
-    local escaped_path = escape_path(git_root)
+    local project_id = escape_path(git_root)
+    if vim.fn.has("win32") == 0 then
+        project_id = vim.fn.sha256(git_root):sub(1, 16)
+    end
     local pid = vim.fn.getpid()
     local socket_dir = get_socket_dir()
 
-    return string.format("%s/nvim-mcp.%s.%d.sock", socket_dir, escaped_path, pid)
+    local filename = string.format("nvim-mcp.%s.%d.sock", project_id, pid)
+    return socket_dir:gsub("/+$", "") .. "/" .. filename
 end
 
 --- Setup nvim-mcp with custom tools and configuration

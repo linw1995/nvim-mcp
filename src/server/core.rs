@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use rmcp::{ErrorData as McpError, RoleServer, service::RequestContext};
+use sha2::{Digest, Sha256};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -270,7 +271,7 @@ fn get_socket_search_dirs() -> BTreeSet<String> {
 pub fn find_get_all_targets() -> Vec<String> {
     let mut targets = Vec::new();
     for dir in get_socket_search_dirs() {
-        let pattern = format!("{dir}/nvim-mcp.*.sock");
+        let pattern = format!("{}/nvim-mcp.*.sock", glob::Pattern::escape(&dir));
         if let Ok(paths) = glob::glob(&pattern) {
             targets.extend(
                 paths
@@ -306,32 +307,45 @@ fn escape_path(path: &str) -> String {
     path.trim().replace("/", "%")
 }
 
-/// Find nvim-mcp socket targets for the current project only
-/// Returns sockets that match the current project's escaped path
-pub fn find_targets_for_current_project() -> Vec<String> {
-    let current_project_root = get_current_project_root();
-    let escaped_project_root = escape_path(&current_project_root);
+/// Matches the first 64 bits of vim.fn.sha256 in the Lua plugin.
+fn project_socket_id(project_root: &str) -> String {
+    format!("{:x}", Sha256::digest(project_root.as_bytes()))[..16].to_string()
+}
 
-    let mut targets = Vec::new();
-    for dir in get_socket_search_dirs() {
-        let pattern = format!("{dir}/nvim-mcp.{escaped_project_root}.*.sock");
-        match glob::glob(&pattern) {
-            Ok(paths) => {
-                targets.extend(
-                    paths
-                        .filter_map(|entry| entry.ok())
-                        .map(|path| path.to_string_lossy().to_string()),
-                );
-            }
-            Err(e) => {
-                warn!(
-                    "Glob error while searching for Neovim sockets with pattern '{}': {}",
-                    pattern, e
-                );
+/// Find both current and legacy socket names during plugin upgrades.
+fn find_project_targets(project_root: &str, dirs: BTreeSet<String>) -> Vec<String> {
+    let project_ids = [project_socket_id(project_root), escape_path(project_root)];
+    let mut targets = BTreeSet::new();
+    for dir in dirs {
+        for project_id in &project_ids {
+            let pattern = format!(
+                "{}/nvim-mcp.{}.*.sock",
+                glob::Pattern::escape(&dir),
+                glob::Pattern::escape(project_id),
+            );
+            match glob::glob(&pattern) {
+                Ok(paths) => {
+                    targets.extend(
+                        paths
+                            .filter_map(|entry| entry.ok())
+                            .map(|path| path.to_string_lossy().to_string()),
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "Glob error while searching for Neovim sockets with pattern '{}': {}",
+                        pattern, e
+                    );
+                }
             }
         }
     }
-    targets
+    targets.into_iter().collect()
+}
+
+/// Find nvim-mcp socket targets for the current project only.
+pub fn find_targets_for_current_project() -> Vec<String> {
+    find_project_targets(&get_current_project_root(), get_socket_search_dirs())
 }
 
 /// Connect to a single target and return the connection ID
@@ -405,5 +419,105 @@ pub async fn auto_connect_current_project_targets(
         Err(failed_connections)
     } else {
         Ok(successful_connections)
+    }
+}
+
+#[cfg(test)]
+mod socket_tests {
+    use super::*;
+
+    #[test]
+    fn discovery_matches_hashed_and_legacy_names_literally() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("runtime[1]");
+        std::fs::create_dir(&dir).unwrap();
+        let project = "/workspace/project[1]";
+        let expected: BTreeSet<String> = [project_socket_id(project), escape_path(project)]
+            .into_iter()
+            .map(|id| {
+                let path = dir.join(format!("nvim-mcp.{id}.123.sock"));
+                std::fs::write(&path, "").unwrap();
+                path.to_str().unwrap().to_string()
+            })
+            .collect();
+        for other in ["/workspace/project1", "/workspace/other"] {
+            for id in [project_socket_id(other), escape_path(other)] {
+                std::fs::write(dir.join(format!("nvim-mcp.{id}.123.sock")), "").unwrap();
+            }
+        }
+        assert_eq!(
+            find_project_targets(project, BTreeSet::from([dir.to_str().unwrap().to_string()])),
+            expected.into_iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn integration_tests_lua_socket_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("long-project-".repeat(12));
+        std::fs::create_dir(&project).unwrap();
+        let runtime = tempfile::Builder::new()
+            .prefix("nvim-mcp-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        // Match the length of a typical macOS /var/folders temporary directory.
+        let mac_runtime = runtime
+            .path()
+            .join("r".repeat(48 - runtime.path().as_os_str().len() - 1));
+        std::fs::create_dir(&mac_runtime).unwrap();
+        let project = project.canonicalize().unwrap();
+        let project_id = project_socket_id(project.to_str().unwrap());
+        for in_git in [false, true] {
+            let cwd = if in_git {
+                let output = Command::new("git")
+                    .args(["init", "--quiet"])
+                    .arg(&project)
+                    .output()
+                    .unwrap();
+                assert!(output.status.success());
+                let nested = project.join("nested");
+                std::fs::create_dir(&nested).unwrap();
+                nested
+            } else {
+                project.clone()
+            };
+            for (xdg, tmp, expected_dir) in [
+                (runtime.path(), mac_runtime.as_path(), runtime.path()),
+                (
+                    std::path::Path::new(""),
+                    mac_runtime.as_path(),
+                    mac_runtime.as_path(),
+                ),
+                (mac_runtime.as_path(), runtime.path(), mac_runtime.as_path()),
+                (
+                    std::path::Path::new(""),
+                    std::path::Path::new(""),
+                    std::path::Path::new("/tmp"),
+                ),
+            ] {
+                let output = Command::new("nvim")
+                    .args(["--headless", "-u", "NONE", "-i", "NONE", "-n", "-l"])
+                    .arg(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/src/testdata/socket_paths.lua"
+                    ))
+                    .current_dir(&cwd)
+                    .env_remove("GIT_DIR")
+                    .env_remove("GIT_WORK_TREE")
+                    .env("XDG_RUNTIME_DIR", xdg)
+                    .env("TMPDIR", tmp)
+                    .env("NVIM_MCP_ROOT", env!("CARGO_MANIFEST_DIR"))
+                    .env("NVIM_MCP_EXPECTED_ID", &project_id)
+                    .env("NVIM_MCP_EXPECTED_DIR", expected_dir)
+                    .output()
+                    .unwrap();
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+        }
     }
 }

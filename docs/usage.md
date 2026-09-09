@@ -172,3 +172,14 @@ nvim-mcp --http-port 8080 --http-host 0.0.0.0
 # With custom logging
 nvim-mcp --http-port 8080 --log-file ./nvim-mcp.log --log-level debug
 ```
+
+## Plugin socket paths
+
+On Unix, the plugin names sockets `nvim-mcp.<project-hash>.<pid>.sock`, using
+the first 16 hexadecimal characters of SHA-256 of the Git root (or working
+directory outside Git). It prefers `XDG_RUNTIME_DIR`, then `TMPDIR`, then
+`/tmp`. Explicit `pipe` overrides are used as supplied.
+
+Update both the Lua plugin and the Rust server when upgrading to this naming
+scheme. The Rust server also discovers legacy sockets named with escaped
+project paths.
