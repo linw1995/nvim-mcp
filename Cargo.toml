@@ -77,6 +77,7 @@ glob = "0.3"
 dashmap = "6.1"
 regex = "1.12"
 blake3 = "1.8"
+sha2 = "0.10"
 
 [dev-dependencies]
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
