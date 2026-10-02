@@ -522,7 +522,8 @@ pub fn get_compiled_binary() -> PathBuf {
         );
     }
 
-    binary_path
+    // Child processes may run in a different project directory.
+    std::path::absolute(binary_path).expect("Failed to resolve the compiled binary path")
 }
 
 /// Get the target directory path for the compiled binary
