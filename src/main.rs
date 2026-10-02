@@ -70,6 +70,23 @@ impl FromStr for ConnectBehavior {
                     return Ok(ConnectBehavior::SpecificTarget(target.to_string()));
                 }
 
+                #[cfg(windows)]
+                {
+                    const PIPE_PREFIX: &str = r"\\.\pipe\";
+                    if target.get(..PIPE_PREFIX.len()).is_some_and(|prefix| {
+                        prefix.replace('/', "\\").eq_ignore_ascii_case(PIPE_PREFIX)
+                    }) {
+                        let name = &target[PIPE_PREFIX.len()..];
+                        return if !name.is_empty() && !name.contains(['\\', '\0']) {
+                            Ok(ConnectBehavior::SpecificTarget(format!(
+                                "{PIPE_PREFIX}{name}"
+                            )))
+                        } else {
+                            Err(format!("Invalid Windows named pipe: '{target}'"))
+                        };
+                    }
+                }
+
                 // Validate file path (socket/pipe)
                 let path = std::path::Path::new(target);
                 if path.is_absolute()
@@ -79,7 +96,7 @@ impl FromStr for ConnectBehavior {
                 }
 
                 Err(format!(
-                    "Invalid target: '{}'. Must be 'manual', 'auto', TCP address (e.g., '127.0.0.1:6666'), or absolute socket path",
+                    "Invalid target: '{}'. Must be 'manual', 'auto', TCP address (e.g., '127.0.0.1:6666'), absolute socket path, or Windows named pipe",
                     target
                 ))
             }
@@ -254,4 +271,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Server shutdown complete");
 
     Ok(())
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn named_pipes_do_not_require_filesystem_metadata() {
+        for address in [
+            r"\\.\pipe\nvim-mcp-cli-test",
+            "//./pipe/nvim-mcp-cli-test",
+            r"\\.\PIPE\nvim-mcp-cli-test",
+        ] {
+            let target: ConnectBehavior = address.parse().unwrap();
+            assert_eq!(target.to_string(), r"\\.\pipe\nvim-mcp-cli-test");
+        }
+        for address in [r"\\.\pipe\", r"\\.\pipe\nested\name"] {
+            assert!(address.parse::<ConnectBehavior>().is_err());
+        }
+    }
 }
