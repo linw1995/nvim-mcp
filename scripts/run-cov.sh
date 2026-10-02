@@ -9,7 +9,8 @@ export RUSTFLAGS="-Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Clink-d
 # export RUSTFLAGS="-Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Zpanic_abort_tests -Cpanic=abort"
 # export RUSTDOCFLAGS="-Cpanic=abort"
 export CARGO_TARGET_DIR="./target/coverage"
-export LLVM_PROFILE_FILE="${CARGO_TARGET_DIR}/data/nvim-mcp-%p-%m.profraw"
+# Keep profiles when integration tests change child process working directories.
+export LLVM_PROFILE_FILE="${PWD}/${CARGO_TARGET_DIR}/data/nvim-mcp-%p-%m.profraw"
 
 rm -rf ${CARGO_TARGET_DIR}/data/
 mkdir -p ${CARGO_TARGET_DIR}/data/
