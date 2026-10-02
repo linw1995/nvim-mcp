@@ -20,8 +20,8 @@ fn new_resource(uri: &str, name: &str, description: Option<&str>) -> Resource {
 // Manual ServerHandler implementation to override tool methods
 impl ServerHandler for NeovimMcpServer {
     #[instrument(skip(self))]
-    fn get_info(&self) -> ServerInfo {
-        let mut info = ServerInfo::default();
+    fn get_info(&self) -> ServerConfig {
+        let mut info = ServerConfig::default();
         info.instructions = None;
         info.capabilities = ServerCapabilities::builder()
             .enable_tools()
