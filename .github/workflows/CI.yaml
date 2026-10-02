@@ -45,7 +45,11 @@ jobs:
       - uses: ./.github/actions/setup-nix
 
       - name: Run integration tests with coverage
-        run: run-cov -- --show-output
+        run: |
+          # Keep build-script coverage consistent across branch and detached checkouts.
+          git switch --create ci-coverage
+          run-cov -- --show-output
+          git checkout -
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v7
