@@ -79,6 +79,9 @@ regex = "1.12"
 blake3 = "1.8"
 sha2 = "0.10"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 rand = "0.10.1"

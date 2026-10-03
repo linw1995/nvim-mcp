@@ -105,6 +105,21 @@ Use `nix develop .` to enter the development shell (only if `IN_NIX_SHELL` is
 not already set) or set up direnv with `echo 'use flake' > .envrc` for
 automatic environment activation.
 
+### Windows
+
+Install Rust, Git, and Neovim on `PATH`, then use Cargo directly:
+
+```powershell
+cargo build --locked --bin nvim-mcp
+cargo test --locked --all-targets -- --skip integration_tests
+cargo test --locked integration_tests_plugin_discovery -- --nocapture
+cargo test --locked server::integration_tests::test_list_buffers_tool -- --exact
+```
+
+Windows CI checks all Rust targets and runs unit tests plus named pipe discovery,
+automatic connection, explicit connection, and reconnection tests. The full LSP
+integration suite runs on Linux with the language servers from the Nix shell.
+
 ## Error Handling
 
 - **Layered errors**: `ServerError` (top-level) and `NeovimError` (Neovim-specific)

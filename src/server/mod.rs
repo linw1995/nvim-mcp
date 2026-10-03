@@ -1,4 +1,5 @@
 pub mod core;
+mod discovery;
 mod hybrid_router;
 pub(crate) mod lua_tools;
 mod resources;

@@ -1,4 +1,4 @@
-Discover available Neovim socket paths
+Discover available Neovim Unix sockets or Windows named pipes
 
 - Only invoke this tool if no active Neovim connections exist.
-- Select the socket path that is relative to the current project directory for connection.
+- Prefer `--connect auto` to connect to instances associated with the current project.
