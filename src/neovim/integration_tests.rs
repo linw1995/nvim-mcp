@@ -113,14 +113,7 @@ async fn test_lua_execution() {
 #[traced_test]
 #[cfg(any(unix, windows))]
 async fn test_error_handling() {
-    #[cfg(unix)]
-    use tokio::net::UnixStream;
-    #[cfg(windows)]
-    use tokio::net::windows::named_pipe::NamedPipeClient;
-    #[cfg(unix)]
-    let client = NeovimClient::<UnixStream>::default();
-    #[cfg(windows)]
-    let client = NeovimClient::<NamedPipeClient>::new();
+    let client = NeovimClient::<IpcStream>::default();
 
     // Test operations without connection
     let result = client.get_buffers().await;
@@ -1065,11 +1058,7 @@ async fn test_lsp_rename_without_prepare() {
 }
 
 // Helper function to set up Neovim instance with LSP for formatting tests
-async fn setup_formatting_test_helper() -> (
-    TempDir,
-    NeovimIpcGuard,
-    NeovimClient<tokio::net::UnixStream>,
-) {
+async fn setup_formatting_test_helper() -> (TempDir, NeovimIpcGuard, NeovimClient<IpcStream>) {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let temp_file_path = temp_dir.path().join("test_formatting_split.ts");
     // Create a poorly formatted TypeScript file that needs formatting

@@ -9,7 +9,12 @@ use tracing::debug;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 #[cfg(windows)]
-use tokio::net::windows::named_pipe::NamedPipeClient;
+use tokio::net::windows::named_pipe::ClientOptions;
+
+#[cfg(unix)]
+pub type IpcStream = tokio::net::UnixStream;
+#[cfg(windows)]
+pub type IpcStream = tokio::net::windows::named_pipe::NamedPipeClient;
 
 use crate::neovim::NeovimClient;
 use crate::neovim::NeovimClientTrait;
@@ -283,7 +288,7 @@ pub async fn setup_neovim_instance_pipe_advance(
     open_file: &str,
 ) -> std::process::Child {
     let mut child = StdCommand::new(nvim_path())
-        .args(&[
+        .args([
             "-n",
             "-i",
             "NONE",
@@ -307,7 +312,7 @@ pub async fn setup_neovim_instance_pipe_advance(
         sleep(Duration::from_millis(50)).await;
 
         // Try to connect to see if Neovim is ready
-        if NamedPipeClient::connect(pipe_path).await.is_ok() {
+        if ClientOptions::new().open(pipe_path).is_ok() {
             break;
         }
 
@@ -387,7 +392,7 @@ pub async fn setup_test_neovim_instance(
         #[cfg(unix)]
         let can_connect = UnixStream::connect(ipc_path).await.is_ok();
         #[cfg(windows)]
-        let can_connect = NamedPipeClient::connect(ipc_path).await.is_ok();
+        let can_connect = ClientOptions::new().open(ipc_path).is_ok();
 
         if can_connect {
             break;
@@ -407,7 +412,7 @@ pub async fn setup_test_neovim_instance(
 /// This mimics the auto-connect pattern by doing connection + setup in one call
 pub async fn setup_auto_connected_client_ipc(
     ipc_path: &str,
-) -> (NeovimClient<tokio::net::UnixStream>, NeovimIpcGuard) {
+) -> (NeovimClient<IpcStream>, NeovimIpcGuard) {
     let child = setup_neovim_instance_ipc(ipc_path).await;
     let mut client = NeovimClient::default();
 
@@ -452,7 +457,7 @@ pub async fn setup_auto_connected_client_ipc_advance(
     ipc_path: &str,
     config_path: &str,
     open_file: &str,
-) -> (NeovimClient<tokio::net::UnixStream>, NeovimIpcGuard) {
+) -> (NeovimClient<IpcStream>, NeovimIpcGuard) {
     setup_auto_connected_client_ipc_advance_with_options(
         ipc_path,
         config_path,
@@ -469,7 +474,7 @@ pub async fn setup_auto_connected_client_ipc_advance_with_options(
     config_path: &str,
     open_file: &str,
     opts: AutoConnectAdvanceOptions,
-) -> (NeovimClient<tokio::net::UnixStream>, NeovimIpcGuard) {
+) -> (NeovimClient<IpcStream>, NeovimIpcGuard) {
     let child = setup_neovim_instance_ipc_advance(ipc_path, config_path, open_file).await;
     let mut client = NeovimClient::default();
 
@@ -509,7 +514,7 @@ pub async fn setup_auto_connected_client_ipc_advance_with_options(
 pub fn get_compiled_binary() -> PathBuf {
     let mut binary_path = get_target_dir();
     binary_path.push("debug");
-    binary_path.push("nvim-mcp");
+    binary_path.push(format!("nvim-mcp{}", std::env::consts::EXE_SUFFIX));
     if !binary_path.exists() {
         panic!(
             "Compiled binary not found at {:?}. Please run `cargo build` first.",
@@ -517,7 +522,8 @@ pub fn get_compiled_binary() -> PathBuf {
         );
     }
 
-    binary_path
+    // Child processes may run in a different project directory.
+    std::path::absolute(binary_path).expect("Failed to resolve the compiled binary path")
 }
 
 /// Get the target directory path for the compiled binary

@@ -11,7 +11,8 @@ use rmcp::{
 };
 use tracing::instrument;
 
-use super::core::{NeovimMcpServer, find_get_all_targets};
+use super::core::NeovimMcpServer;
+use super::discovery::find_get_all_targets;
 use super::lua_tools;
 use crate::neovim::client::TypeHierarchyItem;
 use crate::neovim::{

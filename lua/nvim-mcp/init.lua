@@ -7,6 +7,7 @@ M._tool_registry = {}
 
 ---@class SetupOptions
 ---@field custom_tools table<string, CustomTool>|nil Custom tools configuration
+---@field pipe string|nil Explicit RPC address (socket, named pipe, or TCP)
 
 ---@class CustomTool
 ---@field description string Tool description
@@ -54,34 +55,32 @@ M.MCP = {
     end,
 }
 
--- Escape path for use in filename by replacing problematic characters
-local function escape_path(path)
-    -- Remove leading/trailing whitespace and replace '/' with '%'
-    return path:gsub("^%s+", ""):gsub("%s+$", ""):gsub("/", "%%")
-end
-
 -- Get git root directory
 local function get_git_root()
-    local handle = io.popen("git rev-parse --show-toplevel 2>/dev/null")
-    if not handle then
-        return nil
-    end
-    local result = handle:read("*a")
-    handle:close()
-
-    if result and result ~= "" then
-        return result:gsub("^%s+", ""):gsub("%s+$", "") -- trim whitespace
+    local ok, result = pcall(function()
+        return vim.system({ "git", "rev-parse", "--show-toplevel" }, {
+            cwd = vim.fn.getcwd(),
+            text = true,
+        }):wait()
+    end)
+    if ok and result.code == 0 then
+        return result.stdout:gsub("[\r\n]+$", "")
     end
     return nil
+end
+
+local function normalize_windows_project_path(path)
+    -- Resolve directory aliases before hashing, matching Rust's canonicalize.
+    path = (vim.uv.fs_realpath(path) or path):gsub("\\", "/")
+    path = path:gsub("^//%?/UNC/", "//"):gsub("^//%?/", "")
+    path = path:gsub("^%a:", string.lower)
+    return path:gsub("/+$", "")
 end
 
 -- Get the base directory for socket files
 -- Prefers XDG_RUNTIME_DIR (typically /run/user/<uid>, already mode 700)
 -- for security, then TMPDIR (e.g. macOS per-user temp), falls back to /tmp
 local function get_socket_dir()
-    if vim.fn.has("win32") == 1 then
-        return os.getenv("TEMP")
-    end
     local xdg = os.getenv("XDG_RUNTIME_DIR")
     if xdg and xdg ~= "" then
         return xdg
@@ -101,14 +100,17 @@ local function generate_pipe_path()
         git_root = vim.fn.getcwd()
     end
 
-    local project_id = escape_path(git_root)
-    if vim.fn.has("win32") == 0 then
-        project_id = vim.fn.sha256(git_root):sub(1, 16)
+    local windows = vim.fn.has("win32") == 1
+    if windows then
+        git_root = normalize_windows_project_path(git_root)
     end
+    local project_id = vim.fn.sha256(git_root):sub(1, 16)
     local pid = vim.fn.getpid()
-    local socket_dir = get_socket_dir()
-
     local filename = string.format("nvim-mcp.%s.%d.sock", project_id, pid)
+    if windows then
+        return "\\\\.\\pipe\\" .. filename
+    end
+    local socket_dir = get_socket_dir()
     return socket_dir:gsub("/+$", "") .. "/" .. filename
 end
 
@@ -118,8 +120,6 @@ function M.setup(opts)
     if has_setup then
         return
     end
-    has_setup = true
-
     opts = opts or {}
 
     -- Store custom tools in registry with validation
@@ -146,6 +146,7 @@ function M.setup(opts)
 
     -- Start Neovim RPC server on the pipe
     vim.fn.serverstart(pipe_path)
+    has_setup = true
 end
 
 -- Tool Discovery API for MCP Server

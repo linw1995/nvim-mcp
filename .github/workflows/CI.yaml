@@ -56,3 +56,49 @@ jobs:
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           fail_ci_if_error: github.actor != 'dependabot[bot]'
+
+  windows-test:
+    needs:
+      - lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Update Rust
+        run: rustup update stable --no-self-update
+
+      - name: Install Neovim
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'nvim.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'neovim'
+          Invoke-WebRequest -Uri 'https://github.com/neovim/neovim/releases/latest/download/nvim-win64.zip' -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $destination
+          Join-Path $destination 'nvim-win64\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Check all Windows targets
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Build MCP server
+        run: cargo build --locked --bin nvim-mcp
+
+      - name: Run unit tests
+        run: cargo test --locked --all-targets -- --skip integration_tests
+
+      - name: Test plugin discovery and automatic connections
+        run: cargo test --locked integration_tests_plugin_discovery -- --nocapture
+
+      - name: Test explicit named pipe connections
+        run: cargo test --locked server::integration_tests::test_list_buffers_tool -- --exact
+
+      - name: Test named pipe reconnections
+        run: cargo test --locked neovim::integration_tests::test_connection_constraint -- --exact

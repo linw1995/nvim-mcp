@@ -69,7 +69,7 @@ macro_rules! setup_connected_service {
     }};
     ($cfg_path:expr, $open_file:expr) => {{
         let ipc_path = generate_random_ipc_path();
-        let child = setup_neovim_instance_socket_advance(&ipc_path, $cfg_path, $open_file).await;
+        let child = setup_neovim_instance_ipc_advance(&ipc_path, $cfg_path, $open_file).await;
         let _guard = NeovimIpcGuard::new(child, ipc_path.clone());
         let service = create_mcp_service!(&ipc_path);
         let connection_id = b3sum(&ipc_path)[..7].to_string();
@@ -1092,7 +1092,7 @@ async fn test_lua_tools_end_to_end_workflow() -> Result<(), Box<dyn std::error::
 
     info!("starting IPC Neovim for testing");
 
-    let ipc_path = generate_random_socket_path();
+    let ipc_path = generate_random_ipc_path();
     let cfg_path = "src/testdata/cfg_lsp.lua";
     let open_file = "src/testdata/main.go";
 
